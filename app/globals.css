@@ -1,26 +1,337 @@
 @import "tailwindcss";
 
+/* ════════════════════════════════════════════════════════════
+   LEONIDAS TOUCH — Kinetic Motion System
+   Mobile-first. Maroon/Gold on warm near-black.
+════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Surfaces (warm near-black with maroon undertone) ── */
+  --bg:    #0A0506;
+  --bg-2:  #120709;
+  --bg-3:  #1B0A0E;
+  --maroon:      #4A1019;
+  --maroon-lite: #6B1825;
+
+  /* ── Gold ── */
+  --gold:       #D4AF37;
+  --gold-light: #F4E6A8;
+  --gold-deep:  #A87B2E;
+
+  /* ── Text ── */
+  --text:       #F3EEE7;
+  --text-dim:   #AC9E95;
+  --text-faint: #6E605A;
+
+  /* ── Lines ── */
+  --line:      rgba(212, 175, 55, 0.14);
+  --line-soft: rgba(243, 238, 231, 0.08);
+
+  /* ── Fluid type scale (mobile-first, clamps up) ── */
+  --fs-display: clamp(2.85rem, 12.5vw, 11rem);
+  --fs-h1:      clamp(2.5rem, 9vw, 6.5rem);
+  --fs-h2:      clamp(2rem, 6vw, 4rem);
+  --fs-h3:      clamp(1.35rem, 3.5vw, 2rem);
+  --fs-lead:    clamp(1.05rem, 2.2vw, 1.4rem);
+  --fs-body:    1.0625rem;          /* 17px — always readable */
+  --fs-small:   0.9375rem;          /* 15px */
+  --fs-label:   0.72rem;            /* mono labels */
+
+  /* ── Spacing rhythm ── */
+  --section-y: clamp(5rem, 12vw, 10rem);
+  --gutter:    clamp(1.5rem, 5vw, 5rem);
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Note: Tailwind v4 preflight (via @import) handles the base reset in @layer base,
+   so padding/margin utilities can override it. Do NOT add an unlayered
+   `* { padding: 0 }` here — unlayered rules beat layered utilities and would
+   silently zero out every Tailwind padding/margin utility. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Studio theme (Leonidas Touch — dark gold) ── */
+.theme-studio {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(70% 40% at 80% 8%, rgba(74,16,25,0.32) 0%, transparent 55%),
+    radial-gradient(60% 35% at 10% 55%, rgba(74,16,25,0.20) 0%, transparent 55%),
+    radial-gradient(80% 40% at 60% 100%, rgba(107,24,37,0.28) 0%, transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* Content sits above the fixed spark canvas */
+.theme-studio main { position: relative; z-index: 1; }
+
+/* Sections clear the fixed nav when anchor-scrolled */
+section { scroll-margin-top: 5rem; }
+
+::selection { background: rgba(212, 175, 55, 0.25); color: var(--gold-light); }
+
+/* ── Typography utilities ── */
+.font-display { font-family: var(--font-syne), sans-serif; }
+.font-body    { font-family: var(--font-manrope), sans-serif; }
+.font-mono    { font-family: var(--font-mono), monospace; }
+
+.display {
+  font-family: var(--font-syne), sans-serif;
+  font-weight: 800;
+  font-size: var(--fs-display);
+  line-height: 0.88;
+  letter-spacing: -0.03em;
+}
+
+.h2 {
+  font-family: var(--font-syne), sans-serif;
+  font-weight: 700;
+  font-size: var(--fs-h2);
+  line-height: 0.96;
+  letter-spacing: -0.02em;
+}
+
+.h3 {
+  font-family: var(--font-syne), sans-serif;
+  font-weight: 600;
+  font-size: var(--fs-h3);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  font-size: var(--fs-lead);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Mono technical label */
+.eyebrow {
+  font-family: var(--font-mono), monospace;
+  font-size: var(--fs-label);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.text-gold {
+  background: linear-gradient(120deg, var(--gold-deep), var(--gold), var(--gold-light), var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Layout helpers ── */
+.section { padding-block: var(--section-y); padding-inline: var(--gutter); }
+.pad-x { padding-inline: var(--gutter); }
+.wrap { max-width: 88rem; margin-inline: auto; width: 100%; }
+.hairline { height: 1px; width: 100%; background: var(--line); border: 0; }
+
+/* ── Kinetic clip-reveal (for letters/lines) ── */
+.clip-mask { overflow: hidden; display: block; }
+
+/* ── Grain overlay ── */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: overlay;
+}
+
+/* ── Cursor-follow gold light (desktop) ── */
+.cursor-glow {
+  position: fixed;
+  top: 0; left: 0;
+  width: 480px; height: 480px;
+  margin: -240px 0 0 -240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212,175,55,0.12) 0%, rgba(212,175,55,0) 62%);
+  pointer-events: none;
+  z-index: 2;
+  will-change: transform;
+  transition: opacity 0.4s ease;
+}
+
+/* ── Buttons ── */
+.btn-gold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3rem;
+  padding: 0 1.6rem;
+  border-radius: 999px;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #0A0506;
+  background: linear-gradient(120deg, var(--gold-deep), var(--gold) 45%, var(--gold-light) 65%, var(--gold-deep));
+  transition: box-shadow 0.4s var(--ease), transform 0.3s var(--ease);
+}
+.btn-gold:hover { box-shadow: 0 0 44px rgba(212,175,55,0.34); }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3rem;
+  padding: 0 0.4rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: color 0.3s var(--ease);
+}
+.btn-ghost:hover { color: var(--gold-light); }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(168,123,46,0.55); border-radius: 2px; }
+html { scrollbar-width: thin; scrollbar-color: rgba(168,123,46,0.55) transparent; }
+
+/* ════════════════════════════════════════════════════════════
+   NIDAS — washed / raw apparel theme (light, minimal)
+   Scoped under .theme-nidas so it never touches the studio site.
+════════════════════════════════════════════════════════════ */
+.theme-nidas {
+  --bone:      #E4DED1;
+  --bone-2:    #D8D1C2;
+  --concrete:  #C7BFB0;
+  --stone:     #9A9183;
+  --ink:       #211E1A;
+  --ink-soft:  #4A453E;
+  --faded:     #837A6E;
+  --line-n:    rgba(33,30,26,0.14);
+  --line-n-2:  rgba(33,30,26,0.08);
+  --whisper:   #B89A4A; /* muted gold whisper, used sparingly */
+
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background: var(--bone);
+  color: var(--ink);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
+/* Subtle acid-wash mottling, sits behind content but above the bone bg */
+.theme-nidas::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.5;
+  background:
+    radial-gradient(40% 35% at 18% 12%, rgba(255,255,255,0.5) 0%, transparent 60%),
+    radial-gradient(45% 40% at 85% 30%, rgba(154,145,131,0.28) 0%, transparent 60%),
+    radial-gradient(50% 45% at 60% 95%, rgba(154,145,131,0.22) 0%, transparent 60%);
+}
+
+.theme-nidas .n-display {
+  font-family: var(--font-archivo), var(--font-syne), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 0.94;
+}
+.theme-nidas .n-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--faded);
+}
+.theme-nidas .n-price {
+  font-family: var(--font-mono), monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Nidas buttons */
+.n-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.25rem;
+  padding: 0 1.8rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bone);
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: background 0.3s var(--ease), color 0.3s var(--ease), opacity 0.3s;
+}
+.n-btn:hover { background: transparent; color: var(--ink); }
+.n-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.n-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.25rem;
+  padding: 0 1.4rem;
+  border: 1px solid var(--line-n);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: border-color 0.3s, background 0.3s;
+}
+.n-btn-ghost:hover { border-color: var(--ink); background: rgba(33,30,26,0.04); }
+
+/* Waitlist on the dark band */
+.theme-nidas .nidas-invert input {
+  border-color: rgba(228,222,209,0.3) !important;
+  color: var(--bone) !important;
+}
+.theme-nidas .nidas-invert input::placeholder { color: var(--stone); }
+.theme-nidas .nidas-invert .n-btn {
+  background: var(--bone);
+  color: var(--ink);
+  border-color: var(--bone);
+}
+.theme-nidas .nidas-invert .n-btn:hover { background: transparent; color: var(--bone); }
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .cursor-glow { display: none; }
 }
