@@ -13,14 +13,14 @@ export default function NidasNav() {
       style={{ background: "rgba(228,222,209,0.82)", backdropFilter: "blur(10px)", borderBottom: "1px solid var(--line-n)" }}
     >
       <div className="flex items-center justify-between px-[var(--gutter)] h-16 max-w-[88rem] mx-auto">
-        {/* Back to studio */}
-        <Link
-          href="/"
+        {/* Back to the studio site (other domain) */}
+        <a
+          href="https://leonidastouch.com"
           className="n-label hidden sm:flex items-center gap-2 transition-colors"
           style={{ color: "var(--faded)" }}
         >
           <span aria-hidden="true">←</span> Leonidas Touch
-        </Link>
+        </a>
 
         {/* Wordmark center */}
         <Link href="/nidas" className="flex items-center gap-2.5 sm:absolute sm:left-1/2 sm:-translate-x-1/2" aria-label="nidas home">

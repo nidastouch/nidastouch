@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import LionMark from "./LionMark";
 
 const COLS = [
@@ -25,7 +24,7 @@ const COLS = [
     head: "Elsewhere",
     links: [
       { label: "Instagram", href: "https://www.instagram.com/leonidastouch/" },
-      { label: "Nidas", href: "/nidas" },
+      { label: "Nidas", href: "https://nidastouch.com" },
     ],
   },
 ];
@@ -49,14 +48,14 @@ export default function Footer() {
             <p className="max-w-[32ch]" style={{ color: "var(--text-dim)", fontSize: "var(--fs-small)", lineHeight: 1.6 }}>
               Product engineering studio. Turning vision into gold.
             </p>
-            <Link
-              href="/nidas"
+            <a
+              href="https://nidastouch.com"
               className="inline-flex items-center gap-2 mt-5 transition-colors duration-300"
               style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--text-faint)" }}
             >
               <span style={{ color: "var(--gold)" }}>✦</span> Nidas / Apparel
               <span aria-hidden="true">→</span>
-            </Link>
+            </a>
           </div>
 
           {COLS.map((col) => (

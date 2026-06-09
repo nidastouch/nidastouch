@@ -21,7 +21,7 @@ export default function SuccessClient() {
         </p>
         <div className="mt-10 flex flex-wrap gap-4 justify-center">
           <Link href="/nidas" className="n-btn">Keep Shopping</Link>
-          <Link href="/" className="n-btn-ghost">Leonidas Touch</Link>
+          <a href="https://leonidastouch.com" className="n-btn-ghost">Leonidas Touch</a>
         </div>
       </div>
     </section>

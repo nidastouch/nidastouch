@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
 import LionMark from "./LionMark";
 
@@ -97,9 +96,9 @@ export default function Nav() {
                 />
               </button>
             ))}
-            {/* Quiet sister-brand link */}
-            <Link
-              href="/nidas"
+            {/* Quiet sister-brand link → the apparel domain */}
+            <a
+              href="https://nidastouch.com"
               className="group relative flex items-baseline gap-1.5 py-2"
               aria-label="Nidas apparel"
             >
@@ -111,7 +110,7 @@ export default function Nav() {
                 className="absolute left-0 -bottom-0.5 h-px w-0 group-hover:w-full transition-all duration-400"
                 style={{ background: "var(--gold)", transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}
               />
-            </Link>
+            </a>
             <button onClick={() => go("#contact")} className="btn-gold">
               Hire Me
             </button>
@@ -183,12 +182,12 @@ export default function Nav() {
                 exit={{ opacity: 0, y: 20 }}
                 transition={{ delay: 0.12 + LINKS.length * 0.08, duration: 0.6, ease: EASE }}
               >
-                <Link href="/nidas" onClick={() => setOpen(false)} className="flex items-baseline gap-4 py-3">
+                <a href="https://nidastouch.com" onClick={() => setOpen(false)} className="flex items-baseline gap-4 py-3">
                   <span className="font-mono" style={{ fontSize: "0.8rem", color: "var(--gold-deep)" }}>✦</span>
                   <span className="display" style={{ fontSize: "clamp(2.75rem, 16vw, 4.5rem)", color: "var(--gold-200)" }}>
                     Nidas
                   </span>
-                </Link>
+                </a>
               </motion.div>
             </div>
 

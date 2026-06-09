@@ -28,7 +28,7 @@ export default function NidasFooter() {
           <nav aria-label="More">
             <h3 className="n-label mb-4">More</h3>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/" style={{ color: "var(--ink-soft)", fontSize: "0.95rem" }}>Leonidas Touch</Link></li>
+              <li><a href="https://leonidastouch.com" style={{ color: "var(--ink-soft)", fontSize: "0.95rem" }}>Leonidas Touch</a></li>
               <li><a href="https://www.instagram.com/leonidastouch/" target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-soft)", fontSize: "0.95rem" }}>Instagram</a></li>
               <li><a href="mailto:hello@nidastouch.com" style={{ color: "var(--ink-soft)", fontSize: "0.95rem" }}>Contact</a></li>
             </ul>

@@ -39,7 +39,7 @@ export default function Sparks() {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const fine = window.matchMedia("(pointer: fine)").matches;
 
-    let W = 0, H = 0, dpr = 1;
+    let W = 0, H = 0, dpr = 1, lastW = -1;
 
     const build = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -50,8 +50,9 @@ export default function Sparks() {
       canvas.style.width = W + "px";
       canvas.style.height = H + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lastW = W;
 
-      const count = W < 768 ? 46 : 120;
+      const count = W < 768 ? 40 : 120;
       embersRef.current = Array.from({ length: count }, () => ({
         x: Math.random() * W,
         y: Math.random() * H,
@@ -65,8 +66,13 @@ export default function Sparks() {
       }));
     };
 
+    // On mobile, the address bar showing/hiding changes innerHeight on every
+    // scroll, which would otherwise rebuild the whole field and cause jank.
+    // Only rebuild when the WIDTH actually changes (real resize / rotation).
+    const onResize = () => { if (window.innerWidth !== lastW) build(); };
+
     build();
-    window.addEventListener("resize", build);
+    window.addEventListener("resize", onResize);
 
     const onMove = (e: MouseEvent) => {
       mouseRef.current.x = e.clientX;
@@ -145,7 +151,7 @@ export default function Sparks() {
     }
 
     return () => {
-      window.removeEventListener("resize", build);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseout", onLeave);
       cancelAnimationFrame(rafRef.current);
