@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# working notes and grading sources: not for the public repo
+/REDESIGN-WORKSHOP.md
+/media-src/

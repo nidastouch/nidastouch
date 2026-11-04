@@ -30,19 +30,11 @@ const archivo = Archivo({
   display: "swap",
 });
 
+// The defaults. The studio (leonidastouch.com) and the store (nidastouch.com, app/nidas) each set their own.
 export const metadata: Metadata = {
-  title: "Leonidas Touch · Turning Vision into Gold",
-  description:
-    "Product engineering studio. We build the digital products that grow ambitious businesses.",
-  keywords: ["product engineering", "digital products", "software studio", "consulting", "automation"],
-  authors: [{ name: "Leonidas Touch" }],
-  openGraph: {
-    title: "Leonidas Touch · Turning Vision into Gold",
-    description: "Product engineering studio. We build the digital products that grow ambitious businesses.",
-    url: "https://nidastouch.com",
-    siteName: "Leonidas Touch",
-    type: "website",
-  },
+  title: "nidas touch",
+  description: "a video and photo studio in san antonio, texas.",
+  authors: [{ name: "Leonidas Touch LLC" }],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -1,0 +1,57 @@
+/* who we work with: the studio's finished palette */
+.page {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: #f4e3c0;
+  color: #0f0d0b;
+  font-family: var(--nt-display), system-ui, sans-serif;
+  font-variation-settings: "wght" 440, "wdth" 100;
+  padding: 0 clamp(20px, 6vw, 88px);
+}
+.top { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 0; }
+.home { color: inherit; text-decoration: none; font-size: 22px; font-variation-settings: "wght" 820, "wdth" 100; }
+.foot { font-family: var(--nt-mono), ui-monospace, monospace; font-size: 10.5px; color: #4a4238; }
+/* a real button back, top right, easy to hit with a thumb */
+.back {
+  font-family: var(--nt-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: #f4e3c0;
+  background: #0f0d0b;
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+}
+.main { flex: 1; padding: 8svh 0 12svh; }
+.main h1 {
+  margin: 0;
+  font-family: var(--nt-serif), Georgia, serif;
+  font-weight: normal;
+  font-size: clamp(2.6rem, 8vw, 6.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.lede { margin: 3svh 0 0; font-size: clamp(1.05rem, 1.6vw, 1.35rem); max-width: 40ch; }
+.list { list-style: none; margin: 9svh 0 0; padding: 0; display: grid; gap: 11svh; }
+.person { display: grid; }
+.person:nth-child(even) { justify-items: end; text-align: right; }
+.person:nth-child(even) .links { justify-content: flex-end; }
+.words { display: grid; gap: 1.4svh; }
+.handle { font-family: var(--nt-mono), ui-monospace, monospace; font-size: 11px; color: #4a4238; }
+.words h2 {
+  margin: 0;
+  font-weight: normal;
+  font-size: clamp(2.4rem, 7vw, 6rem);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  font-variation-settings: "wght" 840, "wdth" 100;
+  color: #ea3f17;
+}
+.person:nth-child(2) h2 { color: #0b7b6e; }
+.words p { margin: 0; max-width: 38ch; font-size: 1.05rem; line-height: 1.5; }
+.links { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 1svh !important; font-variation-settings: "wght" 640, "wdth" 100; }
+.links a { color: inherit; text-decoration-color: #3a82c6; text-decoration-thickness: 0.08em; text-underline-offset: 0.16em; }
+.clip { width: 100%; max-height: 70svh; object-fit: cover; border-radius: 2px; background: rgba(15, 13, 11, 0.1); }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 26px 0 calc(env(safe-area-inset-bottom) + 26px); }
+.foot a { color: inherit; text-underline-offset: 3px; }
+

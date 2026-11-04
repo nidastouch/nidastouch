@@ -1,0 +1,45 @@
+/* the other services: the studio's finished palette, nothing moving */
+.page {
+  --bg: #f4e3c0;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: #f4e3c0;
+  color: #0f0d0b;
+  font-family: var(--nt-display), system-ui, sans-serif;
+  font-variation-settings: "wght" 440, "wdth" 100;
+  padding: 0 clamp(20px, 6vw, 88px);
+}
+.top { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 0; }
+.home { color: inherit; text-decoration: none; font-size: 22px; font-variation-settings: "wght" 780, "wdth" 100; }
+.foot { font-family: var(--nt-mono), ui-monospace, monospace; font-size: 10.5px; color: #4a4238; }
+.back {
+  font-family: var(--nt-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: #f4e3c0;
+  background: #0f0d0b;
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+}
+.main { flex: 1; max-width: 900px; padding: 10svh 0 12svh; }
+.main h1 {
+  margin: 0;
+  font-weight: normal;
+  font-size: clamp(2.8rem, 9vw, 7.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  font-variation-settings: "wght" 820, "wdth" 100;
+}
+.lede { margin: 5svh 0 0; max-width: 40ch; font-size: clamp(1.1rem, 1.8vw, 1.5rem); line-height: 1.45; }
+.blocks { margin: 9svh 0 0; display: grid; gap: 5svh; }
+.blocks > div { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); gap: 3vw; }
+.blocks dt { font-size: clamp(1.15rem, 1.8vw, 1.6rem); font-variation-settings: "wght" 760, "wdth" 100; line-height: 1.1; }
+.blocks dd { margin: 0; max-width: 44ch; font-size: 1.02rem; line-height: 1.55; color: #2e2922; }
+.ask { margin: 11svh 0 0; font-size: clamp(1.2rem, 2.4vw, 2rem); line-height: 1.3; max-width: 30ch; }
+.ask a { color: inherit; text-decoration-color: #ea3f17; text-decoration-thickness: 0.07em; text-underline-offset: 0.14em; }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 26px 0 calc(env(safe-area-inset-bottom) + 26px); }
+.foot a { color: inherit; text-underline-offset: 3px; }
+@media (max-width: 760px) {
+  .blocks > div { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
