@@ -247,7 +247,11 @@
 .appTrack { position: relative; height: 1100svh; margin: 18svh calc(-1 * var(--gut)) 0; overflow-anchor: none; }
 /* once you've been through it, it folds down to one screen: the laptop and "watch it again" */
 .appTrack[data-collapsed] { height: 100svh; }
-.appPin { position: sticky; top: 0; height: 100svh; overflow: hidden; }
+/* dvh, not svh: the app inside is sized to window.innerHeight, which grows when Safari's address bar shrinks.
+   A 100svh frame would then cut off the bottom of the app (the note and the page tabs) with the page showing
+   underneath. dvh follows the bar the same way innerHeight does. Folded down, it keeps the fixed height. */
+.appPin { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow: hidden; }
+.appTrack[data-collapsed] .appPin { height: 100svh; }
 .appHead { position: absolute; top: 12svh; left: var(--gut); right: var(--gut); text-align: center; }
 .appBackdrop { position: absolute; inset: 0; background: #050506; opacity: 0; pointer-events: none; }
 .stage[data-inside] .bar { opacity: 0; pointer-events: none; }
