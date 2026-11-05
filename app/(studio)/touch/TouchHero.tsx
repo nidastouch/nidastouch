@@ -366,11 +366,21 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
     // not by an IntersectionObserver (a pinned element always intersects).
     const coverAt = () => window.innerHeight * 1.6;
     let onScreen = window.scrollY < coverAt(); // a rotation deep in the page doesn't start it decoding
+    // Covered by the page, the hero isn't drawn at all (hidden, so the browser can drop its layers) and the
+    // player waiting for the next clip lets go of its video; both come back as you scroll up to it. A phone
+    // only has so much graphics memory, and the rest of the page needs it more by then.
+    const cover = (on: boolean) => {
+      wrap.style.visibility = on ? "hidden" : "";
+      const idle = vids[1 - slot];
+      if (on) { idle.pause(); idle.removeAttribute("src"); idle.load(); }
+      else if (CLIPS.length > 1 && !idle.getAttribute("src")) load(idle, CLIPS[(ci + 1) % CLIPS.length]);
+    };
     const onScroll = () => {
       const vis = window.scrollY < coverAt();
       if (vis === onScreen) return;
       onScreen = vis;
       const v = vids[slot];
+      cover(!onScreen);
       if (onScreen) { if (playing) v.play().catch(() => {}); } else v.pause();
     };
     // back from another app or tab, or from the back/forward cache: carry on if it was playing
@@ -381,6 +391,7 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
     // (preventDefault), show the still meanwhile, and rebuild when it's restored.
     const onLost = (e: Event) => { e.preventDefault(); alive = false; cancelAnimationFrame(raf); setLive(false); };
     const onRestored = () => setGen((g) => g + 1);
+    if (!onScreen) cover(true); // set up from deep in the page (a rotation down there)
     window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("visibilitychange", onBack);
     window.addEventListener("pageshow", onBack);
@@ -483,6 +494,7 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onCancel);
       canvas.removeEventListener("click", onClick);
+      wrap.style.visibility = "";
       vids.forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
       gl.deleteTexture(tex);
       gl.deleteBuffer(buf);

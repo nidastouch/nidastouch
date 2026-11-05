@@ -226,16 +226,18 @@ const hump = (wb: number, db: number, wt: number, dt: number, h: number, back: n
 };
 
 function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
+  const fine = window.matchMedia("(pointer: fine)").matches;
+  // On phones, no multisampling: 4x MSAA on a full-screen canvas is tens of MB of graphics memory, and
+  // Android tabs that run out of it crash. Drawing at 2x the CSS size smooths the edges instead.
   let renderer: THREE.WebGLRenderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "low-power" });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: fine, alpha: true, powerPreference: "low-power" });
   } catch {
     return null;
   }
-  const fine = window.matchMedia("(pointer: fine)").matches;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const root = document.documentElement;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, fine ? 1.75 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.shadowMap.enabled = true;
@@ -564,13 +566,26 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
 
   let raf = 0;
   let last = 0;
+  // Out of sight (tucked below the edge on the hero, or put away inside the editing app) the canvas is
+  // hidden and its drawing buffer shrunk to a pixel: that's most of the camera's memory, given back while
+  // nobody can see it, and taken again the moment it's needed.
+  let asleep = false;
+  const sleep = (on: boolean) => {
+    if (on === asleep) return;
+    asleep = on;
+    canvas.style.visibility = on ? "hidden" : "";
+    renderer.setSize(on ? 1 : W, on ? 1 : H, false);
+  };
   const frame = (t: number) => {
     const dt = Math.min(0.033, last ? (t - last) / 1000 : 0.016);
     last = t;
     let moving = false;
     for (const sp of Object.values(S)) moving = stepSpring(sp, dt) || moving;
+    const out = S.rise.to === 1 && S.rise.x > 0.995 && S.menu.to === 0 && S.menu.x < 0.005 && endStart < 0;
+    if (!out) sleep(false);
     apply(t);
-    if (lastDark < 1) renderer.render(scene, cam);
+    if (!asleep && lastDark < 1) renderer.render(scene, cam);
+    if (out && !moving) sleep(true);
     const playing = endStart >= 0 && !endedSent;
     raf = moving || playing ? requestAnimationFrame(frame) : 0;
     if (!raf) last = 0;
@@ -581,7 +596,7 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     W = w; H = h;
-    renderer.setSize(w, h, false);
+    if (!asleep) renderer.setSize(w, h, false);
     cam.aspect = w / h;
     cam.updateProjectionMatrix();
     layout();

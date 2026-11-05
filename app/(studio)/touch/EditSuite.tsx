@@ -145,6 +145,8 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
   useEffect(() => { cb.current = { onNodes, onInside }; });
   const [st, setSt] = useState<State>({ page: "media", pool: 0, tl: 0, n: 0, jobs: 0, note: "", noteText: "" });
   const [live, setLive] = useState(false);
+  // the viewer (a WebGL canvas and a video) only exists near the edit, and lets go of both when you leave
+  const [near, setNear] = useState(false);
   const askRef = useRef<() => void>(() => {});
   // the panels just changed: measure again once they're laid out, so the cursor finds them
   useEffect(() => { askRef.current(); }, [st]);
@@ -154,7 +156,8 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
     const scr = screenRef.current!, base = baseRef.current!, head = headRef.current!, skip = skipRef.current!;
     let raf = 0;
     let last = "";
-    let sentN = -1, sentIn: boolean | null = null, sentLive: boolean | null = null;
+    let sentN = -1, sentIn: boolean | null = null, sentLive: boolean | null = null, sentNear = false;
+    const nearBy = (v: boolean) => { if (v !== sentNear) { sentNear = v; setNear(v); } };
     const pos = (t: string) => {
       const pr = pn.getBoundingClientRect();
       if (t === "off") return { x: pr.width * 1.04, y: pr.height * 1.08 };
@@ -206,6 +209,7 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
         skip.style.pointerEvents = "none";
         if (sentIn !== false) { sentIn = false; cb.current.onInside(false); }
         if (sentLive !== false) { sentLive = false; setLive(false); }
+        nearBy(false);
         lastP = -1;
         const pageN = r.top > H * 0.5 ? 0 : 8;
         if (pageN !== sentN) { sentN = pageN; cb.current.onNodes(pageN); }
@@ -226,6 +230,11 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
         ask();
         return;
       }
+
+      // within a couple of screens of it: the viewer exists. With some slack either way, so a fling doesn't
+      // build and throw away a WebGL context over and over.
+      if (r.top < H * 2.5 && r.bottom > -H) nearBy(true);
+      else if (r.top > H * 3.5 || r.bottom < -H * 2) nearBy(false);
 
       // not reached yet (it's all below the screen): nothing of it to draw, so skip the work, just make sure
       // nothing is left on from before (a jump up from inside it)
@@ -473,7 +482,7 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
                 {page === "media" ? "source · C0447" : page === "edit" ? "timeline · garner" : page === "color" ? `node ${String(Math.max(1, n)).padStart(2, "0")} · ${NODES[Math.max(0, n - 1)]}` : "deliver · garner_reel"}
                 <i><span ref={tcRef}>01:00:06:00</span></i>
               </header>
-              <AppViewer nodes={viewerNodes} live={live} scope={page === "color"} scopeRef={scopeRef} />
+              {near ? <AppViewer nodes={viewerNodes} live={live} scope={page === "color"} scopeRef={scopeRef} /> : <div className={styles.appPicture} aria-hidden="true" />}
               <div className={styles.transport} aria-hidden="true">
                 <i>⏮</i><i>◀︎◀︎</i><i data-cur="play">▶</i><i>▶︎▶︎</i><i>⏭</i>
                 <span className={styles.lutTag}>{viewerNodes === 0 ? "s-log3 · no lut" : viewerNodes >= 8 ? "graded" : `grading · ${viewerNodes}/7`}</span>

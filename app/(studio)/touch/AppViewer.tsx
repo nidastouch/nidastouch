@@ -70,6 +70,18 @@ export default function AppViewer({ nodes, live, scope = true, scopeRef }: Props
 
   useEffect(() => { nodesRef.current = nodes; kickRef.current(); }, [nodes]);
   useEffect(() => { scopeOn.current = scope; kickRef.current(); }, [scope]);
+  // leaving for good (the edit is behind you): give back the GPU memory and the video decoder now, not at
+  // garbage collection. Not in development, where React mounts twice on the same canvas.
+  useEffect(() => {
+    const canvas = canvasRef.current, v = vidRef.current;
+    return () => {
+      v?.pause();
+      if (process.env.NODE_ENV !== "production") return;
+      v?.removeAttribute("src");
+      v?.load();
+      canvas?.getContext("webgl")?.getExtension("WEBGL_lose_context")?.loseContext();
+    };
+  }, []);
   // back from another app or tab while it's on screen: carry on playing
   useEffect(() => {
     const back = () => {

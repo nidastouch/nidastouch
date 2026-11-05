@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import TouchHero from "./TouchHero";
+import CameraFallback from "./CameraFallback";
 import type { Piece } from "./WorkTile";
 import WorkRoom from "./WorkRoom";
 import Viewer from "./Viewer";
@@ -545,8 +546,25 @@ export default function Stage() {
         />
       )}
 
-      {/* the same controls as plain buttons: for keyboards and screen readers, and if WebGL is missing */}
-      <nav className={`${styles.keys} ${noCamera ? styles.keysShown : ""}`} aria-label="Camera controls" inert={covered}>
+      {/* no 3D in this browser: the same camera, drawn flat */}
+      {noCamera && (
+        <CameraFallback
+          turns={turns}
+          onTurn={turnDial}
+          graded={!bypass}
+          onGraded={(g) => setBypass(!g)}
+          onShutter={startEnding}
+          armed={armed !== null}
+          onRec={rec}
+          onMenu={openMenu}
+          onHome={goTop}
+          hidden={overHero}
+          inactive={covered}
+        />
+      )}
+
+      {/* the same controls as plain buttons, for keyboards and screen readers */}
+      <nav className={styles.keys} aria-label="Camera controls" inert={covered}>
         {STOPS.map((s, i) => (
           <button key={s} type="button" onClick={() => { press(); turnDial(turns + ((i - at + 3) % 3)); }} aria-current={at === i ? "true" : undefined}>
             {s}

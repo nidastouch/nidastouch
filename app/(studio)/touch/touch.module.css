@@ -752,11 +752,17 @@
   background: #0f0d0b;
   box-shadow: 0 24px 60px rgba(15, 13, 11, 0.22);
 }
+/* the blurred copy behind the feature: blurred small and scaled up, which looks the same as a big 34px blur
+   and costs a sixty-fourth of the graphics memory (a big blur is one of the heavier things for a phone) */
 .featureBg {
   position: absolute;
-  inset: -40px;
+  left: 50%;
+  top: 50%;
+  width: calc((100% + 80px) / 8);
+  height: calc((100% + 80px) / 8);
+  transform: translate(-50%, -50%) scale(8);
   background: center / cover;
-  filter: blur(34px) brightness(0.55) saturate(0.7);
+  filter: blur(4px) brightness(0.55) saturate(0.7);
   animation: roomIn 0.6s ease;
 }
 .featurePic {
@@ -1316,3 +1322,67 @@
   .curtain::before, .curtain::after, .flash { animation: none; }
   .endScene, .vfWindow, .endVf { transition-duration: 0.01s; }
 }
+
+/* ---- the camera without 3D (CameraFallback): the same top plate, drawn flat ----
+   x and z on the 3D plate (13 x 4.6 units) as percentages: left = (x + 6.5) / 13, top = (z + 2.3) / 4.6 */
+.flatCam {
+  position: fixed;
+  z-index: 35;
+  left: 50%;
+  /* placed from the top of the smallest viewport, like the 3D one, so the address bar can't push it about */
+  top: calc(100svh - 26px - var(--barw) * 0.3538);
+  width: var(--barw);
+  transform: translateX(-50%);
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
+}
+.flatCam[data-hidden] { transform: translate(-50%, 160%); opacity: 0; pointer-events: none; }
+.stage[data-inside] .flatCam { transform: translate(-50%, 160%); opacity: 0; pointer-events: none; }
+.flatPlate {
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 13 / 4.6;
+  border-radius: 3.2cqw;
+  background: linear-gradient(#1b1b1e, #0f0f11 60%, #0b0b0c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 6px rgba(0, 0, 0, 0.6), 0 14px 30px rgba(15, 13, 11, 0.35);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #f1eee8;
+}
+.flatPlate > * { position: absolute; transform: translate(-50%, -50%); }
+.flatPlate button { margin: 0; padding: 0; border: 0; font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.flatPlate button:active { filter: brightness(0.82); }
+.flatPlate button:focus-visible { outline: 2px solid #f2a23a; outline-offset: 2px; }
+
+.flatHump { left: 38.3%; top: 62%; width: 29.9%; height: 96%; border-radius: 1.6cqw 1.6cqw 0 0; background: linear-gradient(#232326, #161618); box-shadow: 0 0 0 0.4cqw #0d0d0f; }
+.flatHump i { position: absolute; left: 50%; top: 55%; width: 32%; aspect-ratio: 1; transform: translate(-50%, -50%); background: #bfc1c4; border-radius: 0.6cqw; box-shadow: inset 0 0 0 2.2cqw #bfc1c4; }
+.flatHump i::after { content: ""; position: absolute; inset: 28%; background: #0a0a0b; }
+
+.flatDial { left: 12.69%; top: 43%; width: 21.2%; aspect-ratio: 1; border-radius: 50%; background: repeating-conic-gradient(#26262a 0 3deg, #1a1a1d 3deg 6deg); box-shadow: 0 0 0 0.5cqw #2a2a2d, 0 0.6cqw 1.2cqw rgba(0, 0, 0, 0.6); }
+.flatDial span { position: absolute; inset: 8%; border-radius: 50%; background: #323236; transition: transform 0.45s cubic-bezier(0.3, 1.4, 0.5, 1); }
+.flatDial span::after { content: ""; position: absolute; left: 50%; top: 50%; width: 26%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff, #b9bcc0 60%, #8d9095); }
+.flatDial b { position: absolute; inset: 0; font-weight: 700; }
+.flatDial em { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); font-style: normal; font-size: 3.1cqw; letter-spacing: 0.08em; }
+.flatIndex { left: 12.69%; top: 83%; width: 0; height: 0; border-left: 1.3cqw solid transparent; border-right: 1.3cqw solid transparent; border-bottom: 2cqw solid #f2a23a; }
+
+.flatPlate .flatMenu { left: 16.9%; top: 90.5%; width: 10.8%; height: 13.5%; border-radius: 99px; background: linear-gradient(#36363a, #26262a); box-shadow: 0 0 0 0.45cqw #1a1a1c, 0 0.4cqw 0.8cqw rgba(0, 0, 0, 0.6); font-size: 2.1cqw; font-weight: 700; letter-spacing: 0.1em; }
+
+.flatBtn { top: 22.8%; width: 8.6%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1.25cqw #1f1f21, 0 0.6cqw 1.2cqw rgba(0, 0, 0, 0.6); }
+.flatRec { left: 62.7%; background: radial-gradient(circle at 40% 35%, #ff5a52, #c8141e 70%); }
+.flatHome { left: 76.5%; background: linear-gradient(#36363a, #26262a); display: grid; place-items: center; }
+.flatHome svg { width: 58%; height: 58%; fill: none; stroke: #ece8df; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.flatPlate .flatLabel { font-size: 2.2cqw; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; background: none; }
+.flatRecLabel { left: 62.7%; top: 45.2%; color: #ff5a4a; }
+.flatHomeLabel { left: 76.5%; top: 45.2%; }
+.flatTally { left: 66.9%; top: 45.2%; width: 1.2%; aspect-ratio: 1; border-radius: 50%; background: #3a120e; }
+.flatTally[data-on] { background: #ff3b24; box-shadow: 0 0 1.2cqw #ff2a14; }
+
+.flatEv { left: 69.6%; top: 75%; width: 13.8%; aspect-ratio: 1; border-radius: 50%; background: repeating-conic-gradient(#26262a 0 4deg, #19191c 4deg 8deg); box-shadow: 0 0 0 0.4cqw #2a2a2d, 0 0.6cqw 1.2cqw rgba(0, 0, 0, 0.6); }
+.flatEv span { position: absolute; inset: 9%; border-radius: 50%; background: #323236; display: grid; place-items: end center; padding-bottom: 16%; font-size: 1.05cqw; letter-spacing: 0; white-space: nowrap; color: #c9c6bf; transition: transform 0.35s ease; }
+
+.flatShutterRing { left: 90.4%; top: 38%; width: 15.4%; aspect-ratio: 1; border-radius: 50%; background: #1f1f21; box-shadow: 0 0 0 0.4cqw #2a2a2d; }
+.flatShutter { left: 90.4%; top: 36%; width: 9.4%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #fff, #d8dadd 35%, #9a9da2 75%, #6e7176); box-shadow: 0 0.5cqw 1cqw rgba(0, 0, 0, 0.6); }
+.flatPlate .flatSayHi { left: 90.4%; top: 54%; font-size: 1.6cqw; }
+.flatGraded { left: 82.8%; top: 69%; color: #8f8d88; }
+.flatLog { left: 94.6%; top: 71%; color: #8f8d88; }
+.flatGraded[data-on], .flatLog[data-on] { color: #f1eee8; }
+/* thumbs: every control reaches a little past what you see */
+.flatPlate button::before { content: ""; position: absolute; inset: -30%; }
