@@ -769,6 +769,9 @@
   position: absolute;
   inset: 0;
   display: grid;
+  /* one row and one column exactly the size of the box, so the video's max-height: 100% means the box: with
+     plain auto tracks the row grew to fit the video and a tall clip spilled out of the bottom, cropped */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   padding: 3%;
   border: 0;
