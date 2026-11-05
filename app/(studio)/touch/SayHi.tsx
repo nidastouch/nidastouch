@@ -18,10 +18,22 @@ const EMAIL = "hello@nidastouch.com";
 
 type State = "idle" | "sending" | "sent" | "mailto" | "error";
 
+// What's been typed so far, kept for the visit: leaving the say hi screen and coming back (or a slip of the
+// finger on "back to the page") doesn't lose a half-written message.
+const draft = { name: "", email: "", message: "", kind: KINDS[0] };
+
+const mailtoFor = (d: { name: string; kind: string; message: string }) =>
+  `mailto:${EMAIL}?subject=${encodeURIComponent(`say hi: ${d.kind}`)}&body=${encodeURIComponent([d.message, "", `name: ${d.name}`, `for: ${d.kind}`].join("\n"))}`;
+
 export default function SayHi({ onClose, live }: { onClose: () => void; live: boolean }) {
-  const [kind, setKind] = useState(KINDS[0]);
+  const [kind, setKind] = useState(draft.kind);
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
+  const [mail, setMail] = useState<{ href: string; message: string } | null>(null);
+  const keep = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const k = e.currentTarget.name as "name" | "email" | "message";
+    if (k in draft) draft[k] = e.currentTarget.value;
+  };
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,30 +48,33 @@ export default function SayHi({ onClose, live }: { onClose: () => void; live: bo
     };
     setState("sending");
     setError("");
+    // Whenever it can't be sent from here (not hooked up yet, the server or the connection failing, a phone
+    // that never hears back), it turns into an email instead, with a real button for it: opening the email
+    // app by itself, after waiting on the network, is something browsers are allowed to block.
+    const asEmail = () => {
+      const href = mailtoFor(data);
+      setMail({ href, message: data.message });
+      setState("mailto");
+      try { window.location.href = href; } catch { /* the button is there */ }
+    };
+    const stop = new AbortController();
+    const timer = window.setTimeout(() => stop.abort(), 12000);
     try {
       const r = await fetch("/api/inquiry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        signal: stop.signal,
       });
       const j = await r.json().catch(() => ({}));
-      if (r.ok) { setState("sent"); return; }
-      if (j.fallback === "mailto") {
-        const body = [
-          data.message,
-          "",
-          `name: ${data.name}`,
-          `for: ${data.kind}`,
-        ].join("\n");
-        window.location.href = `mailto:${EMAIL}?subject=${encodeURIComponent(`say hi: ${data.kind}`)}&body=${encodeURIComponent(body)}`;
-        setState("mailto");
-        return;
-      }
+      if (r.ok) { setState("sent"); Object.assign(draft, { name: "", email: "", message: "", kind: KINDS[0] }); return; }
+      if (j.fallback === "mailto" || r.status >= 500) { asEmail(); return; }
       setError(j.error || "Something went wrong.");
       setState("error");
     } catch {
-      setError("Couldn't reach us. Try the email below.");
-      setState("error");
+      asEmail();
+    } finally {
+      window.clearTimeout(timer);
     }
   };
 
@@ -82,35 +97,43 @@ export default function SayHi({ onClose, live }: { onClose: () => void; live: bo
         {state === "sent" ? (
           <p className={styles.hiDone}>got it. we&apos;ll get back to you soon.</p>
         ) : state === "mailto" ? (
-          <p className={styles.hiDone}>
-            the form isn&apos;t hooked up yet, so we opened your email app with it filled in. if nothing
-            opened, write to <a href={`mailto:${EMAIL}`}>{EMAIL}</a>.
-          </p>
+          <div className={styles.hiDone}>
+            <p>
+              this one goes by email. your email app should have opened with it filled in. if it didn&apos;t,
+              tap below, or send it to <a href={`mailto:${EMAIL}`}>{EMAIL}</a>.
+            </p>
+            {mail && (
+              <>
+                <p><a className={styles.hiMailBtn} href={mail.href}>open it in your email app</a></p>
+                <blockquote className={styles.hiMailCopy}>{mail.message}</blockquote>
+              </>
+            )}
+          </div>
         ) : (
           <form className={styles.hiForm} onSubmit={submit}>
             <p className={styles.hiLede}>tell us what you&apos;re making and we&apos;ll get back to you.</p>
             <div className={styles.hiRow}>
               <label>
                 <span>your name</span>
-                <input name="name" autoComplete="name" required tabIndex={live ? 0 : -1} />
+                <input name="name" autoComplete="name" required tabIndex={live ? 0 : -1} defaultValue={draft.name} onChange={keep} />
               </label>
               <label>
                 <span>email</span>
-                <input name="email" type="email" autoComplete="email" required tabIndex={live ? 0 : -1} />
+                <input name="email" type="email" autoComplete="email" required tabIndex={live ? 0 : -1} defaultValue={draft.email} onChange={keep} />
               </label>
             </div>
             <fieldset className={styles.hiKinds}>
               <legend>what&apos;s it for</legend>
               {KINDS.map((k) => (
                 <label key={k} className={kind === k ? styles.hiKindOn : undefined}>
-                  <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} tabIndex={live ? 0 : -1} />
+                  <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => { setKind(k); draft.kind = k; }} tabIndex={live ? 0 : -1} />
                   {k}
                 </label>
               ))}
             </fieldset>
             <label>
               <span>what are you making?</span>
-              <textarea name="message" rows={3} required placeholder="a product launch, a menu, a band, a trip" tabIndex={live ? 0 : -1} />
+              <textarea name="message" rows={3} required placeholder="a product launch, a menu, a band, a trip" tabIndex={live ? 0 : -1} defaultValue={draft.message} onChange={keep} />
             </label>
             {/* people never see this one */}
             <input name="company" className={styles.hiTrap} tabIndex={-1} autoComplete="off" aria-hidden="true" />

@@ -14,8 +14,19 @@ import { STOPS } from "./stops";
 import styles from "./touch.module.css";
 import { flip, halfPress, press, setSound, shutter as shutterSound, soundOn } from "./sound";
 
-// the camera is three.js: load it after the page, never on the server
-const CameraBody = dynamic(() => import("./CameraBody"), { ssr: false });
+// the camera is three.js: load it after the page, never on the server. If its script can't be fetched
+// (a dropped connection, a deploy mid-visit), the page carries on with the plain buttons instead of erroring.
+type CameraProps = Parameters<typeof import("./CameraBody").default>[0];
+// with no 3D camera to put the menu on, it sits in the middle of the screen
+const fallbackRect = () => {
+  const w = Math.min(520, window.innerWidth * 0.86), h = Math.min(w * 0.7, window.innerHeight * 0.6);
+  return { x: Math.round((window.innerWidth - w) / 2), y: Math.round((window.innerHeight - h) / 2), w: Math.round(w), h: Math.round(h) };
+};
+function NoCamera({ onFail }: CameraProps) {
+  useEffect(() => { onFail(); }, [onFail]);
+  return null;
+}
+const CameraBody = dynamic(() => import("./CameraBody").catch(() => ({ default: NoCamera })), { ssr: false });
 
 /*
   The whole page starts in log and gets graded as you scroll.
@@ -106,6 +117,10 @@ export default function Stage() {
   const sound = useSyncExternalStore(soundSubscribe, soundOn, () => true);
   const cur = useRef(0);       // the stop the dial is on
   const lockUntil = useRef(0); // while the dial is driving the scroll, the scroll doesn't drive the dial
+  const lockTo = useRef(-1);   // ...until the page has arrived at the stop it was sent to
+  const camReady = useRef(false); // the 3D camera is built (the ending's dive needs it)
+  const returnTo = useRef<number | null>(null); // where "back to the page" puts you
+  const settleUntil = useRef(0); // the page just changed size (a rotation, the edit folding): let it settle
 
   useEffect(() => {
     const el = root.current!;
@@ -137,6 +152,7 @@ export default function Stage() {
       // the dial: the last stop whose top has passed the middle of the screen
       let a = 0;
       stops.forEach((s, i) => { if (i > 0 && s && s.getBoundingClientRect().top < h * 0.5) a = i; });
+      if (performance.now() < lockUntil.current && a === lockTo.current) lockUntil.current = 0; // arrived
       if (a !== cur.current && performance.now() > lockUntil.current) {
         const d = ((a - cur.current + 4) % 3) - 1; // shortest way round the three stops
         cur.current = a;
@@ -163,15 +179,25 @@ export default function Stage() {
       tiles = Array.from(el.querySelectorAll<HTMLElement>("[data-piece]"));
       ask();
     };
+    // a finger or a wheel during a jump: the person has taken over, so the dial follows the page again
+    const takeOver = () => { lockUntil.current = 0; };
+    const settle = () => { settleUntil.current = performance.now() + 700; };
+    const onResize = () => { settle(); relist(); };
     window.addEventListener("scroll", ask, { passive: true });
-    window.addEventListener("resize", relist);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("nt-fold", settle);
+    window.addEventListener("touchstart", takeOver, { passive: true });
+    window.addEventListener("wheel", takeOver, { passive: true });
     // fonts and videos arriving move things without a scroll: measure again when the page changes size
     const ro = new ResizeObserver(relist);
     ro.observe(el);
     measure();
     return () => {
       window.removeEventListener("scroll", ask);
-      window.removeEventListener("resize", relist);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("nt-fold", settle);
+      window.removeEventListener("touchstart", takeOver);
+      window.removeEventListener("wheel", takeOver);
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
@@ -194,6 +220,8 @@ export default function Stage() {
     const behavior: ScrollBehavior = instant ? "instant" : "smooth";
     const spot = root.current?.querySelector<HTMLElement>(`[data-stop="${STOPS[i]}"]`);
     if (!spot) return;
+    // every stop is past the edit: fold it first, so the spot we aim at is where it'll still be on arrival
+    window.dispatchEvent(new Event("nt-fold"));
     const y = spot.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.14;
     window.scrollTo({ top: Math.max(0, y), behavior });
   }, []);
@@ -205,10 +233,25 @@ export default function Stage() {
     if (next) press();
   };
 
+  // the piece in the middle of the screen right now (armed is only re-measured on scroll, and picking
+  // another piece in the screening room doesn't scroll)
+  const pieceNow = () => {
+    const h = window.innerHeight;
+    let best: string | null = null, bestD = Infinity;
+    root.current?.querySelectorAll<HTMLElement>("[data-piece]").forEach((t) => {
+      const r = t.getBoundingClientRect();
+      if (r.bottom < h * 0.15 || r.top > h * 0.75) return;
+      const d = Math.abs((r.top + r.bottom) / 2 - h * 0.45);
+      if (d < bestD) { bestD = d; best = t.dataset.piece ?? null; }
+    });
+    return best;
+  };
+
   const rec = () => {
     if (phaseRef.current !== "page") return;
     setMenuOpen(false);
-    const p = WORK.find((w) => w.id === armed);
+    const id = pieceNow();
+    const p = WORK.find((w) => w.id === id);
     if (p) setOpen(p); else turnDial(turns + ((0 - at + 3) % 3 || 3)); // nothing on screen: go to the work
   };
 
@@ -219,10 +262,23 @@ export default function Stage() {
   const startEnding = useCallback(() => {
     if (phaseRef.current !== "page" || openRef.current || performance.now() < cooldown.current) return;
     setMenuOpen(false);
+    // started from the shutter mid-page: "back to the page" brings you back here, not to the bottom
+    returnTo.current = bottomSeen.current >= 0.6 ? null : window.scrollY;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    phaseRef.current = noCamera || reduce ? "vf" : "dive";
+    // the dive is the camera's to play: no camera yet (still loading on a slow phone) means straight to the
+    // viewfinder, or the page would sit frozen waiting for an animation nobody is drawing
+    phaseRef.current = noCamera || reduce || !camReady.current ? "vf" : "dive";
     setPhase(phaseRef.current);
   }, [noCamera]);
+
+  // and whatever happens to the camera during the dive, the ending moves on (the dive takes 2.7 s)
+  useEffect(() => {
+    if (phase !== "dive") return;
+    const t = window.setTimeout(() => {
+      if (phaseRef.current === "dive") { phaseRef.current = "vf"; setPhase("vf"); }
+    }, 4500);
+    return () => window.clearTimeout(t);
+  }, [phase]);
 
   const focusAndShoot = () => {
     if (phaseRef.current !== "vf") return;
@@ -248,9 +304,13 @@ export default function Stage() {
     cooldown.current = performance.now() + 1200;
     // if they scroll straight back down during the cooldown, start it as soon as the cooldown ends
     window.setTimeout(() => { if (bottomSeen.current >= 0.6) startEnding(); }, 1250);
-    // back on the page just above the bottom, so the ending doesn't start again by itself
+    // back where the shutter was pressed; or, if it started at the bottom, just above it, so the ending
+    // doesn't start again by itself
     const end = document.getElementById("hi");
-    if (end) {
+    const back = returnTo.current;
+    returnTo.current = null;
+    if (back !== null) window.scrollTo({ top: back, behavior: "instant" });
+    else if (end) {
       const y = end.getBoundingClientRect().top + window.scrollY - window.innerHeight * 1.02;
       window.scrollTo({ top: Math.max(0, y), behavior: "instant" });
     }
@@ -272,8 +332,18 @@ export default function Stage() {
       e.preventDefault();
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { if (phase !== "page") leave(); else if (menuOpen) closeMenu(); }
-      else if (phase !== "hi" && !menuOpen && [" ", "PageDown", "PageUp", "ArrowDown", "ArrowUp", "End", "Home"].includes(e.key)) e.preventDefault();
+      const t = e.target as HTMLElement | null;
+      const typing = !!t?.closest?.("input, textarea, select, [contenteditable]");
+      if (e.key === "Escape") {
+        // Escape while typing in the form (closing autofill, a keyboard's word picker) must not throw the
+        // message away with the screen
+        if (typing || e.isComposing) return;
+        if (phase !== "page") leave(); else if (menuOpen) closeMenu();
+      }
+      else if (phase !== "hi" && !menuOpen && [" ", "PageDown", "PageUp", "ArrowDown", "ArrowUp", "End", "Home"].includes(e.key)) {
+        if (e.key === " " && t?.closest?.("button")) return; // Space presses a button (press to focus)
+        e.preventDefault();
+      }
     };
     window.addEventListener("wheel", block, { passive: false });
     window.addEventListener("touchmove", block, { passive: false });
@@ -295,17 +365,32 @@ export default function Stage() {
     return () => { history.scrollRestoration = prev; };
   }, []);
 
-  // scrolling all the way down starts it too
+  // scrolling all the way down starts it too. The newest entry counts (on a slow phone several arrive at
+  // once, and an older one could hide the crossing). Right after the page changed size (a rotation, the
+  // edit folding) it waits a moment and looks again, so a jolt of layout can't start it by itself.
   useEffect(() => {
     const end = document.getElementById("hi");
     if (!end) return;
-    const io = new IntersectionObserver(([e]) => {
+    let t = 0;
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[entries.length - 1];
       bottomSeen.current = e.intersectionRatio;
-      if (e.intersectionRatio >= 0.6) startEnding();
+      if (e.intersectionRatio < 0.6) return;
+      const wait = settleUntil.current - performance.now();
+      window.clearTimeout(t);
+      if (wait > 0) t = window.setTimeout(() => { if (bottomSeen.current >= 0.6) startEnding(); }, wait + 50);
+      else startEnding();
     }, { threshold: [0, 0.3, 0.6, 0.8, 1] });
     io.observe(end);
-    return () => io.disconnect();
+    return () => { io.disconnect(); window.clearTimeout(t); };
   }, [startEnding]);
+
+  // back from another page through the back/forward cache: nothing should still be open from before
+  useEffect(() => {
+    const show = (e: PageTransitionEvent) => { if (e.persisted) setMenuOpen(false); };
+    window.addEventListener("pageshow", show);
+    return () => window.removeEventListener("pageshow", show);
+  }, []);
 
   // the dial was turned by hand: it leads, and the page follows it
   const turnDial = useCallback((k: number) => {
@@ -313,7 +398,8 @@ export default function Stage() {
     setTurns(k);
     setAt(stop);
     cur.current = stop;
-    lockUntil.current = performance.now() + 1100;
+    lockTo.current = stop;
+    lockUntil.current = performance.now() + 3000; // released early once the page arrives, or a finger takes over
     go(stop);
   }, [go]);
 
@@ -332,6 +418,8 @@ export default function Stage() {
     });
   };
   const shown = bypass ? 0 : Math.max(on, editN);
+  // something is up over the page: keep the keyboard and screen readers out of what's behind it
+  const covered = phase !== "page" || open !== null || menuOpen;
 
   return (
     <div
@@ -342,13 +430,13 @@ export default function Stage() {
       data-over-hero={overHero ? "" : undefined}
       data-inside={inside ? "" : undefined}
     >
-      <header className={styles.bar}>
-        <a href="#top" className={styles.wordmark} onClick={(e) => { e.preventDefault(); go(0); }}>
+      <header className={styles.bar} inert={covered}>
+        <a href="#top" className={styles.wordmark} onClick={(e) => { e.preventDefault(); goTop(); }}>
           nidas touch
         </a>
       </header>
 
-      <div className={styles.heroPin} id="top">
+      <div className={styles.heroPin} id="top" inert={covered}>
         <TouchHero>
           {() => (
             <p className={styles.heroNote}>
@@ -359,7 +447,7 @@ export default function Stage() {
         </TouchHero>
       </div>
 
-      <main className={styles.flow}>
+      <main className={styles.flow} inert={covered}>
         <div className={styles.fog} aria-hidden="true" />
         <div className={styles.body}>
           <section className={styles.intro}>
@@ -385,7 +473,7 @@ export default function Stage() {
               <h2 className={styles.kicker}>stuff from the last few weeks</h2>
               <p className={`${styles.note} ${styles.noteWork}`}>tap the picture to grade it, pick another underneath</p>
             </div>
-            <WorkRoom work={WORK} bypass={bypass} onOpen={setOpen} />
+            <WorkRoom work={WORK} bypass={bypass} onOpen={setOpen} paused={open !== null} />
           </section>
 
           <section className={styles.make} aria-label="What we make" data-stop="make">
@@ -441,7 +529,11 @@ export default function Stage() {
           onSound={toggleSound}
           armed={armed !== null}
           onRec={rec}
-          onFail={() => setNoCamera(true)}
+          onFail={() => {
+            setNoCamera(true);
+            if (phaseRef.current === "dive") { phaseRef.current = "vf"; setPhase("vf"); }
+          }}
+          onReady={() => { camReady.current = true; }}
           inactive={open !== null || phase !== "page" || menuOpen}
           menu={menuOpen}
           away={inside}
@@ -454,7 +546,7 @@ export default function Stage() {
       )}
 
       {/* the same controls as plain buttons: for keyboards and screen readers, and if WebGL is missing */}
-      <nav className={`${styles.keys} ${noCamera ? styles.keysShown : ""}`} aria-label="Camera controls">
+      <nav className={`${styles.keys} ${noCamera ? styles.keysShown : ""}`} aria-label="Camera controls" inert={covered}>
         {STOPS.map((s, i) => (
           <button key={s} type="button" onClick={() => { press(); turnDial(turns + ((i - at + 3) % 3)); }} aria-current={at === i ? "true" : undefined}>
             {s}
@@ -472,9 +564,9 @@ export default function Stage() {
       {menuOpen && <div className={styles.menuBack} onClick={closeMenu} aria-hidden="true" />}
       {menuOpen && (
         <>
-          {menuRect && (
+          {(menuRect || noCamera) && (
             <Menu
-              rect={menuRect}
+              rect={menuRect ?? fallbackRect()}
               sound={sound}
               graded={!bypass}
               onGo={menuGo}

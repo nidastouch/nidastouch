@@ -54,17 +54,32 @@ void main() {
 
 const SW = 120, SH = 68; // the size the scope reads at
 
-type Props = { nodes: number; live: boolean; scopeRef?: React.RefObject<HTMLCanvasElement | null> };
+// scope: the waveform panel is on screen (only the color page shows it), so it's worth computing
+type Props = { nodes: number; live: boolean; scope?: boolean; scopeRef?: React.RefObject<HTMLCanvasElement | null> };
 
-export default function AppViewer({ nodes, live, scopeRef }: Props) {
+export default function AppViewer({ nodes, live, scope = true, scopeRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vidRef = useRef<HTMLVideoElement>(null);
   const nodesRef = useRef(nodes);
   const liveRef = useRef(live);
+  const scopeOn = useRef(scope);
   const kickRef = useRef<() => void>(() => {});
   const [fallback, setFallback] = useState(false);
+  const [lost, setLost] = useState(false); // the browser took the WebGL context away for now
+  const [gen, setGen] = useState(0);       // ...and gave it back: rebuild
 
   useEffect(() => { nodesRef.current = nodes; kickRef.current(); }, [nodes]);
+  useEffect(() => { scopeOn.current = scope; kickRef.current(); }, [scope]);
+  // back from another app or tab while it's on screen: carry on playing
+  useEffect(() => {
+    const back = () => {
+      const v = vidRef.current;
+      if (v && document.visibilityState === "visible" && liveRef.current && v.paused) v.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("pageshow", back);
+    return () => { document.removeEventListener("visibilitychange", back); window.removeEventListener("pageshow", back); };
+  }, []);
   useEffect(() => {
     liveRef.current = live;
     const v = vidRef.current;
@@ -80,6 +95,8 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
     const v = vidRef.current!;
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
     if (!gl) { queueMicrotask(() => setFallback(true)); return; }
+    if (gl.isContextLost()) return; // wait for webglcontextrestored
+    queueMicrotask(() => setLost(false));
     const sh = (t: number, src: string) => { const s = gl.createShader(t)!; gl.shaderSource(s, src); gl.compileShader(s); return s; };
     const prog = gl.createProgram()!;
     gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
@@ -114,11 +131,13 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     const px = new Uint8Array(SW * SH * 4);
+    let img: ImageData | null = null;
+    let lastScope = 0;
     const drawScope = () => {
       const c = scopeRef?.current;
       const sc = c?.getContext("2d");
       if (!c || !sc) return;
-      if (c.width !== 240) { c.width = 240; c.height = 120; }
+      if (c.width !== 240) { c.width = 240; c.height = 120; img = null; }
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
       gl.viewport(0, 0, SW, SH);
       gl.uniform2f(uRes, SW, SH);
@@ -128,7 +147,8 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(uRes, canvas.width, canvas.height);
       const w = c.width, h = c.height;
-      const img = sc.createImageData(w, h);
+      if (!img) img = sc.createImageData(w, h);
+      img.data.fill(0);
       for (let y = 0; y < SH; y++) {
         for (let x = 0; x < SW; x++) {
           const i = (y * SW + x) * 4;
@@ -171,7 +191,12 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
     const ro = new ResizeObserver(size);
     ro.observe(canvas);
 
-    let raf = 0, last = performance.now(), frames = 0;
+    let raf = 0, last = performance.now();
+    // a new decoded frame (24 fps), so the 60 or 120 Hz loop doesn't upload the same picture again
+    type RVFC = (cb: () => void) => number;
+    const rvfc = (v as unknown as { requestVideoFrameCallback?: RVFC }).requestVideoFrameCallback?.bind(v);
+    let fresh = true, dead = false;
+    if (rvfc) { const tick = () => { if (dead) return; fresh = true; rvfc(tick); }; rvfc(tick); }
     const frame = (t: number) => {
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
@@ -185,19 +210,29 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
       });
       const playing = liveRef.current && !v.paused && v.readyState >= 2;
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      if (playing) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, v); have = true; }
+      if (playing && (fresh || !rvfc)) { fresh = false; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, v); have = true; }
       if (have) {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        if (scopeRef && (frames++ % 6 === 0 || moving)) drawScope();
+        // the scope reads pixels back, which stalls the GPU: only when it's showing, about 8 times a second
+        if (scopeRef && scopeOn.current && (moving || t - lastScope > 120)) { lastScope = t; drawScope(); }
       }
       raf = (moving || playing) && liveRef.current ? requestAnimationFrame(frame) : 0;
     };
     const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
     kickRef.current = kick;
     v.addEventListener("playing", kick);
+    // iOS drops WebGL contexts when it's short of memory or the tab goes to the background: ask for it
+    // back, show the still meanwhile, rebuild when it's restored
+    const onLost = (e: Event) => { e.preventDefault(); dead = true; cancelAnimationFrame(raf); raf = 0; setLost(true); };
+    const onRestored = () => setGen((g) => g + 1);
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
     size();
 
     return () => {
+      dead = true;
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
       cancelAnimationFrame(raf);
       ro.disconnect();
       v.removeEventListener("playing", kick);
@@ -208,16 +243,15 @@ export default function AppViewer({ nodes, live, scopeRef }: Props) {
       gl.deleteBuffer(buf);
       gl.deleteProgram(prog);
     };
-  }, [scopeRef]);
+  }, [scopeRef, gen]);
 
   return (
     <div className={styles.appPicture}>
-      {fallback ? (
+      {(fallback || lost) && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={nodes >= 1 ? "/lab/touch/cypress-desktop-graded.jpg" : "/lab/touch/cypress-desktop-log.jpg"} alt="" />
-      ) : (
-        <canvas ref={canvasRef} aria-hidden="true" />
       )}
+      {!fallback && <canvas ref={canvasRef} aria-hidden="true" style={lost ? { opacity: 0 } : undefined} />}
       <video ref={vidRef} src="/lab/touch/cypress-desktop.mp4" muted playsInline loop preload="none" aria-hidden="true" />
     </div>
   );

@@ -12,8 +12,16 @@ const KEY = "nt-sound";
 let ctx: AudioContext | null = null;
 let noise: AudioBuffer | null = null;
 
-export const soundOn = () => typeof window !== "undefined" && localStorage.getItem(KEY) !== "off";
-export const setSound = (on: boolean) => localStorage.setItem(KEY, on ? "on" : "off");
+// localStorage throws when site data is blocked, and soundOn runs during render: without the try the whole
+// page would fail to load. Then the choice lasts for this visit only.
+let memo: string | null = null;
+const read = () => { try { return localStorage.getItem(KEY); } catch { return memo; } };
+export const soundOn = () => typeof window !== "undefined" && read() !== "off";
+export const setSound = (on: boolean) => {
+  memo = on ? "on" : "off";
+  try { localStorage.setItem(KEY, memo); } catch { /* blocked: memo it is */ }
+};
+type UA = { userActivation?: { isActive: boolean } };
 
 const ac = () => {
   if (!soundOn()) return null;
@@ -25,7 +33,14 @@ const ac = () => {
     const d = noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  if (ctx.state === "suspended") ctx.resume();
+  // Not running ("suspended", or iOS's "interrupted" after a call or an app switch). Only a tap may start it,
+  // so with no tap behind this sound (the dial turning by itself on scroll) skip it: ticks scheduled on a
+  // stopped clock would all go off at once on the first tap.
+  if (ctx.state !== "running") {
+    const ua = (navigator as Navigator & UA).userActivation;
+    if (ua && !ua.isActive) return null;
+    ctx.resume().catch(() => {});
+  }
   return ctx;
 };
 
@@ -79,7 +94,7 @@ const tone = (c: AudioContext, at: number, freq: number, len: number, gain: numb
 // a tiny haptic tick on Android, only inside a real press (a dial turning by itself on scroll stays silent to the hand)
 const buzz = (ms: number | number[]) => {
   try {
-    const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    const ua = (navigator as Navigator & UA).userActivation;
     if (ua && !ua.isActive) return;
     navigator.vibrate?.(ms);
   } catch { /* not on iOS */ }

@@ -7,7 +7,8 @@
   color: #0f0d0b;
   font-family: var(--nt-display), system-ui, sans-serif;
   font-variation-settings: "wght" 440, "wdth" 100;
-  padding: 0 clamp(20px, 6vw, 88px);
+  /* on a big monitor the column stays 1400px wide and centred */
+  padding: 0 max(clamp(20px, 6vw, 88px), calc((100vw - 1400px) / 2));
 }
 .top { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 0; }
 .home { color: inherit; text-decoration: none; font-size: 22px; font-variation-settings: "wght" 820, "wdth" 100; }
@@ -27,11 +28,11 @@
   margin: 0;
   font-family: var(--nt-serif), Georgia, serif;
   font-weight: normal;
-  font-size: clamp(2.6rem, 8vw, 6.5rem);
+  font-size: clamp(2.6rem, min(1rem + 5vw, 13svh), 5.6rem);
   line-height: 0.95;
   letter-spacing: -0.02em;
 }
-.lede { margin: 3svh 0 0; font-size: clamp(1.05rem, 1.6vw, 1.35rem); max-width: 40ch; }
+.lede { margin: 3svh 0 0; font-size: clamp(1.05rem, 0.75rem + 0.75vw, 1.4rem); max-width: 40ch; }
 .list { list-style: none; margin: 9svh 0 0; padding: 0; display: grid; gap: 11svh; }
 .person { display: grid; }
 .person:nth-child(even) { justify-items: end; text-align: right; }
@@ -41,14 +42,14 @@
 .words h2 {
   margin: 0;
   font-weight: normal;
-  font-size: clamp(2.4rem, 7vw, 6rem);
+  font-size: clamp(2.4rem, min(1rem + 4.4vw, 12svh), 5.2rem);
   line-height: 0.92;
   letter-spacing: -0.03em;
   font-variation-settings: "wght" 840, "wdth" 100;
   color: #ea3f17;
 }
 .person:nth-child(2) h2 { color: #0b7b6e; }
-.words p { margin: 0; max-width: 38ch; font-size: 1.05rem; line-height: 1.5; }
+.words p { margin: 0; max-width: 38ch; font-size: clamp(1.05rem, 0.9rem + 0.25vw, 1.2rem); line-height: 1.5; }
 .links { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 1svh !important; font-variation-settings: "wght" 640, "wdth" 100; }
 .links a { color: inherit; text-decoration-color: #3a82c6; text-decoration-thickness: 0.08em; text-underline-offset: 0.16em; }
 .clip { width: 100%; max-height: 70svh; object-fit: cover; border-radius: 2px; background: rgba(15, 13, 11, 0.1); }

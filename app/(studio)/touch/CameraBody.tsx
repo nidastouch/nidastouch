@@ -42,6 +42,7 @@ type Props = {
   armed: boolean;              // a piece is on screen for rec to open
   onRec: () => void;
   onFail: () => void;          // no WebGL: the page shows plain buttons instead
+  onReady?: () => void;        // built and drawing (until then the ending can't use it)
   inactive?: boolean;          // something is open over the page: the camera ignores presses
   ending: boolean;             // play the ending (true) or sit on the bar (false)
   onEnded: () => void;         // the screen is black: hand over to the viewfinder
@@ -102,6 +103,49 @@ const paintText = (text: string, w: number, h: number, color = "#f1eee8", weight
   );
 };
 const flat = (m: THREE.Mesh) => { m.rotation.x = -Math.PI / 2; return m; };
+
+// a small printed icon (the house on HOME), drawn the way the labels are
+const paintIcon = (draw: (g: CanvasRenderingContext2D, n: number) => void, size: number, color = "#ece8df") => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  g.fillStyle = color;
+  g.strokeStyle = color;
+  draw(g, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(size, size),
+    new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }),
+  );
+};
+const house = (g: CanvasRenderingContext2D, n: number) => {
+  g.lineWidth = n * 0.085;
+  g.lineJoin = "round";
+  g.lineCap = "round";
+  g.beginPath(); // the roof
+  g.moveTo(n * 0.16, n * 0.5); g.lineTo(n * 0.5, n * 0.18); g.lineTo(n * 0.84, n * 0.5);
+  g.stroke();
+  g.beginPath(); // the walls, with a door
+  g.moveTo(n * 0.27, n * 0.44); g.lineTo(n * 0.27, n * 0.82); g.lineTo(n * 0.43, n * 0.82); g.lineTo(n * 0.43, n * 0.62);
+  g.lineTo(n * 0.57, n * 0.62); g.lineTo(n * 0.57, n * 0.82); g.lineTo(n * 0.73, n * 0.82); g.lineTo(n * 0.73, n * 0.44);
+  g.stroke();
+};
+
+// a pill, like the MENU button on the back of a Sony, as a shape to extrude
+const stadium = (w: number, h: number) => {
+  const r = h / 2, sh = new THREE.Shape();
+  sh.moveTo(-w / 2 + r, -r);
+  sh.lineTo(w / 2 - r, -r);
+  sh.absarc(w / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2, false);
+  sh.lineTo(-w / 2 + r, r);
+  sh.absarc(-w / 2 + r, 0, r, Math.PI / 2, Math.PI * 1.5, false);
+  return sh;
+};
+const slab = (w: number, h: number, depth: number, bevel: number) =>
+  new THREE.ExtrudeGeometry(stadium(w, h), { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 24 })
+    .rotateX(-Math.PI / 2); // extruded upward, lying on the plate
 
 // numbers round the top of the exposure dial, fanned toward the front
 const evFace = (r: number) => {
@@ -198,9 +242,18 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   renderer.shadowMap.type = THREE.PCFShadowMap; // r187 folded soft shadows into PCF (shadow.radius softens it)
 
   const scene = new THREE.Scene();
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environment = env;
+  // the reflections: made once and the generator thrown away (it holds a cube target). Made again if the
+  // browser restores a lost context, which leaves render targets like this one empty (chrome goes black).
+  const makeEnv = () => {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    const target = pmrem.fromScene(room, 0.04);
+    pmrem.dispose();
+    (room as unknown as { dispose?: () => void }).dispose?.();
+    return target;
+  };
+  let env = makeEnv();
+  scene.environment = env.texture;
   scene.environmentIntensity = 0.7;
 
   // a long lens from far away: almost no perspective, so the bar looks flat
@@ -308,7 +361,8 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   front.scale.set(1, 0.22, 1);
 
   // ---- mode dial, on the left
-  const dial = add(rig, new THREE.Group(), -4.85, 0, 0);
+  const DIAL_Z = -0.32; // up a touch, to leave room for MENU under it
+  const dial = add(rig, new THREE.Group(), -4.85, 0, DIAL_Z);
   add(dial, mesh(new THREE.CylinderGeometry(1.34, 1.38, 0.1, 72), anodSoft), 0, 0.05, 0);
   const dialRot = add(dial, new THREE.Group(), 0, 0.1, 0);
   add(dialRot, mesh(knurled(1.24, 0.8, 60), anod), 0, 0.4, 0);
@@ -322,26 +376,34 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   });
   const tri = new THREE.Shape();
   tri.moveTo(-0.17, 0); tri.lineTo(0.17, 0); tri.lineTo(0, 0.26); tri.closePath();
-  add(rig, flat(mesh(new THREE.ShapeGeometry(tri), orange)), -4.85, 0.004, 1.86);
+  add(rig, flat(mesh(new THREE.ShapeGeometry(tri), orange)), -4.85, 0.004, DIAL_Z + 1.74);
   add(dial, hit(new THREE.CylinderGeometry(1.5, 1.5, 1.3, 24), "dial"), 0, 0.55, 0);
 
-  // ---- rec, menu and home, a row, labelled underneath
+  // ---- rec and home: two round buttons, big enough for a thumb, labelled underneath. Each one looks like
+  // what it does: REC is the red one, HOME has a house on it. Their touch areas reach past the caps.
   const button = (x: number, z: number, top: THREE.Material, ctl: string) => {
     const g = add(rig, new THREE.Group(), x, 0, z);
-    add(g, mesh(new THREE.CylinderGeometry(0.58, 0.6, 0.06, 64), anod), 0, 0.03, 0);
+    add(g, mesh(new THREE.CylinderGeometry(0.7, 0.72, 0.06, 64), anod), 0, 0.03, 0);
     const cap = add(g, new THREE.Group(), 0, 0.06, 0);
-    add(cap, mesh(new THREE.CylinderGeometry(0.44, 0.46, 0.18, 64), top), 0, 0.09, 0);
-    add(cap, mesh(new THREE.CylinderGeometry(0.38, 0.44, 0.05, 64), top), 0, 0.2, 0);
-    add(g, hit(new THREE.CylinderGeometry(0.78, 0.78, 0.7, 24), ctl), 0, 0.3, 0);
+    add(cap, mesh(new THREE.CylinderGeometry(0.54, 0.56, 0.18, 64), top), 0, 0.09, 0);
+    add(cap, mesh(new THREE.CylinderGeometry(0.47, 0.54, 0.05, 64), top), 0, 0.2, 0);
+    add(g, hit(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 24), ctl), 0, 0.3, 0);
     return cap;
   };
-  const recBtn = button(1.55, -1.3, red, "rec");
-  const sndBtn = button(2.7, -1.3, anodSoft, "menu");
-  const homeBtn = button(3.85, -1.3, anodSoft, "home");
-  add(rig, flat(paintText("REC", 0.66, 0.3, "#ff5a4a")), 1.55, 0.004, -0.5);
-  add(rig, flat(paintText("MENU", 0.84, 0.3)), 2.7, 0.004, -0.5);
-  add(rig, flat(paintText("HOME", 0.84, 0.3)), 3.85, 0.004, -0.5);
-  add(rig, mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.05, 20), tally), 2.04, 0.025, -0.5);
+  const recBtn = button(1.65, -1.25, red, "rec");
+  const homeBtn = button(3.45, -1.25, anodSoft, "home");
+  add(homeBtn, flat(paintIcon(house, 0.62)), 0, 0.232, 0);
+  add(rig, flat(paintText("REC", 0.66, 0.3, "#ff5a4a")), 1.65, 0.004, -0.22);
+  add(rig, flat(paintText("HOME", 0.84, 0.3)), 3.45, 0.004, -0.22);
+  add(rig, mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.05, 20), tally), 2.2, 0.025, -0.22); // on when there's a piece to record
+
+  // ---- menu: an oval with MENU printed on it, under the mode dial on the left, like the one on a Sony
+  const menuG = add(rig, new THREE.Group(), -4.3, 0, 1.88);
+  add(menuG, mesh(slab(1.62, 0.84, 0.02, 0.012), anod), 0, 0, 0);
+  const sndBtn = add(menuG, new THREE.Group(), 0, 0.06, 0);
+  add(sndBtn, mesh(slab(1.4, 0.62, 0.13, 0.035), anodSoft), 0, 0, 0);
+  add(sndBtn, flat(paintText("MENU", 0.86, 0.3, "#f1eee8", 700, 0.1)), 0, 0.172, 0);
+  add(menuG, hit(new THREE.BoxGeometry(1.8, 0.7, 1.0), "menu"), 0, 0.3, 0);
 
   // ---- exposure dial: the fidget
   const ev = add(rig, new THREE.Group(), 2.55, 0, 1.15);
@@ -373,8 +435,8 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   const [lx, lz] = around(20, 1.62);
   add(rig, flat(paintText("GRADED", 1.2, 0.32)), gx, 0.004, gz);
   add(rig, flat(paintText("LOG", 0.68, 0.32)), lx, 0.004, lz);
-  add(rig, hit(new THREE.BoxGeometry(1.1, 0.4, 0.6), "graded"), gx, 0.1, gz);
-  add(rig, hit(new THREE.BoxGeometry(0.8, 0.4, 0.6), "log"), lx, 0.1, lz);
+  add(rig, hit(new THREE.BoxGeometry(1.4, 0.4, 0.8), "graded"), gx, 0.1, gz);
+  add(rig, hit(new THREE.BoxGeometry(1.0, 0.4, 0.8), "log"), lx, 0.1, lz);
 
   // ---- motion
   const p0 = cb.current;
@@ -420,7 +482,8 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
     k = (2 * D * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2)) / H;
     const wide = W >= 760;
     // a small floating bar, not a full-width one
-    const barPx = wide ? Math.min(440, W * 0.34) : Math.min(W * 0.82, 340);
+    // on a big monitor it grows a little with the screen (440px at most up to a 1600px-wide window, 572 at most)
+    const barPx = wide ? Math.min(W * 0.34, Math.min(572, Math.max(440, W * 0.275))) : Math.min(W * 0.88, 360);
     sA = (barPx * k) / 13;
     const lift = wide ? 22 : 26; // floats clear of the bottom edge and the phone's home bar
     posA.set(0, -(H / 2) * k + 2.32 * sA + lift * k, 0);
@@ -528,16 +591,12 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   const ro = new ResizeObserver(fit);
   ro.observe(canvas);
 
-  // ---- scroll: tuck down while moving, come back when it stops, and run the ending through #hi
-  let lastY = window.scrollY;
+  // ---- scroll: the bar stays put (Leo's call); scrolling only decides whether it's showing at all. Draw
+  // only when that changes: drawing the whole camera on every scroll event made phones stutter.
   let away = false;
   const onScroll = () => {
-    const y = window.scrollY;
-    const down = y > lastY + 1;
-    lastY = y;
-    void down; // the bar used to tuck down while scrolling; Leo wants it to stay put
-    S.rise.to = y < H * 0.8 || away ? 1 : 0; // not in the hero (or the editing app): it comes up after
-    kick();
+    const to = window.scrollY < H * 0.8 || away ? 1 : 0; // not in the hero (or the editing app)
+    if (to !== S.rise.to) { S.rise.to = to; kick(); }
   };
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();
@@ -561,6 +620,7 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
   type Press = { ctl: string; id: number; x0: number; y0: number; a0: number; dragged: boolean };
   let held: Press | null = null;
   let swallowUntil = 0;
+  let downAt = { x: -1e4, y: -1e4 }; // where the last press on the camera landed
 
   const turnTo = (n: number) => {
     if (n !== turns) detent();
@@ -616,6 +676,7 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
     if (!p) return;
     e.stopPropagation(); // it landed on the camera: keep it from the page underneath
     swallowUntil = performance.now() + 900;
+    downAt = { x: e.clientX, y: e.clientY };
     if (p.ctl === "body") return;
     held = { ctl: p.ctl, id: e.pointerId, x0: e.clientX, y0: e.clientY, a0: S.dial.to, dragged: false };
     if (p.ctl === "shutter") { S.shutter.to = -0.06; halfPress(); }
@@ -650,9 +711,19 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
     release(p, pick(e)?.ctl === p.ctl);
   };
   const onCancel = () => { if (held) { const p = held; held = null; release(p, false); } };
+  // The click that follows a press on the camera belongs to the camera, whatever is under the finger by
+  // then. Asking pick() failed exactly when the press opened something (the menu's dim, the viewer): pick
+  // says no while those are up, so on Android the click fell through and closed the menu it had just opened.
   const onClick = (e: MouseEvent) => {
-    if (performance.now() < swallowUntil && pick(e)) { e.stopPropagation(); e.preventDefault(); }
+    if (performance.now() < swallowUntil && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 40) {
+      swallowUntil = 0;
+      e.stopPropagation();
+      e.preventDefault();
+    }
   };
+  // three.js takes a lost context back by itself; the reflections need making again, and a redraw
+  const onRestored = () => { env.dispose(); env = makeEnv(); scene.environment = env.texture; kick(); };
+  canvas.addEventListener("webglcontextrestored", onRestored);
   window.addEventListener("pointerdown", onDown, true);
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
@@ -706,6 +777,7 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onCancel, true);
       window.removeEventListener("click", onClick, true);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
       root.style.removeProperty("--vf-dark");
       scene.traverse((n) => {
         const m = n as THREE.Mesh;
@@ -715,9 +787,12 @@ function build(canvas: HTMLCanvasElement, cb: { current: Props }): Api | null {
         mat.map?.dispose();
         mat.dispose();
       });
-      [bodyBump, gripBump, env].forEach((t) => t.dispose());
-      pmrem.dispose();
+      [bodyBump, gripBump].forEach((t) => t.dispose());
+      env.dispose();
       renderer.dispose();
+      // give the GPU memory back now rather than at garbage collection (back and forth to /people would
+      // stack contexts up on a phone). Not in development, where React mounts twice on the same canvas.
+      if (process.env.NODE_ENV === "production") renderer.forceContextLoss();
     },
   };
 }
@@ -733,6 +808,7 @@ export default function CameraBody(props: Props) {
     const a = build(ref.current!, cb);
     if (!a) { cb.current.onFail(); return; }
     api.current = a;
+    cb.current.onReady?.();
     return () => { a.dispose(); api.current = null; };
   }, []);
 

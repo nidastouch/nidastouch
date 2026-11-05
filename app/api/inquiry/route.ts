@@ -18,6 +18,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request." }, { status: 400 });
 
   // a field people never see: anything that fills it in is a bot
   if (String(body.company || "").trim()) return NextResponse.json({ ok: true });
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(inquiry),
+      signal: AbortSignal.timeout(8000), // a hung webhook shouldn't leave the sender waiting: it falls back to email
     });
     if (!r.ok) throw new Error(`webhook ${r.status}`);
   } catch (e) {

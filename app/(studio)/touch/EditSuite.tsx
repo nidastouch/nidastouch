@@ -165,11 +165,15 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
       return { x: r.left + r.width / 2 - pr.left, y: r.top + r.height / 2 - pr.top };
     };
     let lastXY = { x: 0, y: 0 };
+    let holdUntil = 0, holdTimer = 0; // a jump past the edit is in flight: stay folded
+    let rested = false, lastTc = "";   // already put at rest while it's below the screen; the last timecode
+    const desk = scr.firstElementChild as HTMLElement; // the desktop under the app
+    let lastP = -1, lastLen = 0;      // where you were in it while it was pinned, and how long it was then
 
     // the laptop's screen: a 16:10 rectangle in the middle of the page, or the whole screen
     const place = (W: number, H: number, zoom: number, phone: boolean) => {
       // small enough on a computer that the camera bar under it doesn't cover the dock
-      const lw = phone ? W * 0.9 : Math.min(W * 0.5, 860, (H * 0.55) / 0.625), lh = lw * 0.625;
+      const lw = phone ? W * 0.9 : Math.min(W * 0.5, 1100, (H * 0.55) / 0.625), lh = lw * 0.625;
       const lx = (W - lw) / 2, ly = H * 0.47 - lh / 2;
       const x = lerp(lx, 0, zoom), y = lerp(ly, 0, zoom), w = lerp(lw, W, zoom), h = lerp(lh, H, zoom);
       scr.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
@@ -191,9 +195,10 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
       const H = window.innerHeight, W = window.innerWidth;
       const phone = W < 760;
 
-      // folded down: the laptop sits there with "watch it again". It opens up again once you're above it.
+      // folded down: the laptop sits there with "watch it again". It opens up again once you're above it
+      // (but not in the middle of a jump past it, see fold below).
       if (el.hasAttribute("data-collapsed")) {
-        if (r.top >= H) el.removeAttribute("data-collapsed");
+        if (r.top >= H && performance.now() > holdUntil) el.removeAttribute("data-collapsed");
         place(W, H, 0, phone);
         app.style.opacity = "0";
         cur.style.opacity = "0";
@@ -201,6 +206,7 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
         skip.style.pointerEvents = "none";
         if (sentIn !== false) { sentIn = false; cb.current.onInside(false); }
         if (sentLive !== false) { sentLive = false; setLive(false); }
+        lastP = -1;
         const pageN = r.top > H * 0.5 ? 0 : 8;
         if (pageN !== sentN) { sentN = pageN; cb.current.onNodes(pageN); }
         return;
@@ -221,7 +227,21 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
         return;
       }
 
+      // not reached yet (it's all below the screen): nothing of it to draw, so skip the work, just make sure
+      // nothing is left on from before (a jump up from inside it)
+      if (r.top >= H) {
+        lastP = -1;
+        if (sentIn !== false) { sentIn = false; cb.current.onInside(false); }
+        if (sentLive !== false) { sentLive = false; setLive(false); }
+        if (sentN !== 0) { sentN = 0; cb.current.onNodes(0); }
+        if (!rested) { rested = true; place(W, H, 0, phone); app.style.opacity = "0"; cur.style.opacity = "0"; skip.style.opacity = "0"; skip.style.pointerEvents = "none"; skip.tabIndex = -1; }
+        return;
+      }
+      rested = false;
+
       const p = clamp01(-r.top / Math.max(1, r.height - H));
+      lastP = r.top <= 0 && r.bottom >= H ? p : -1;
+      lastLen = el.offsetHeight;
       // no rise or sink: the laptop is part of the page, it scrolls in, pins, and scrolls on out
       const zoom = ease(seg(p, 0.015, 0.075)) * (1 - ease(seg(p, 0.94, 0.99)));
       const { w: sw, h: sh } = place(W, H, zoom, phone);
@@ -237,10 +257,13 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
       app.style.borderRadius = `${lerp(12, 0, open).toFixed(1)}px`;
       icon?.toggleAttribute("data-bounce", Math.abs(p - AT.open) < 0.008);
       icon?.toggleAttribute("data-running", open > 0.02);
+      // the desktop is fully behind the open app: hide it, so its blurred bar and dock cost nothing
+      desk.style.visibility = open > 0.995 ? "hidden" : "";
 
       const inside = p > 0.05 && p < 0.95;
       skip.style.opacity = inside ? "1" : "0";
       skip.style.pointerEvents = inside ? "auto" : "none";
+      skip.tabIndex = inside ? 0 : -1; // an invisible button shouldn't take the keyboard
       pn.style.setProperty("--ph", (seg(p, AT.edit, AT.close) * 100).toFixed(2));
       JOBS.forEach((_, i) => pn.style.setProperty(`--j${i}`, (seg(p, RENDER_AT + 0.006 + i * 0.014, RENDER_AT + 0.03 + i * 0.014) * 100).toFixed(1)));
 
@@ -260,7 +283,8 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
       // the timecode on the viewer
       if (tcRef.current) {
         const s = 6 + seg(p, AT.media, AT.close) * 52;
-        tcRef.current.textContent = `01:00:${String(Math.floor(s)).padStart(2, "0")}:${String(Math.floor((s % 1) * 24)).padStart(2, "0")}`;
+        const tc = `01:00:${String(Math.floor(s)).padStart(2, "0")}:${String(Math.floor((s % 1) * 24)).padStart(2, "0")}`;
+        if (tc !== lastTc) { lastTc = tc; tcRef.current.textContent = tc; }
       }
 
       // what's on: a few discrete things, so React only re-renders when one of them changes
@@ -283,12 +307,49 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
     };
     function ask() { if (!raf) raf = requestAnimationFrame(measure); }
     askRef.current = ask;
+
+    // A jump past it (the dial, REC with nothing on screen, the menu) folds it before the scroll starts and
+    // keeps it folded until the jump has landed. Otherwise the smooth scroll, aimed at a spot worked out with
+    // the whole edit in the page, loses ten screens of page when the edit folds by itself on the way past,
+    // overshoots to the bottom, and the bottom starts the ending.
+    const fold = () => {
+      holdUntil = performance.now() + 2500;
+      window.clearTimeout(holdTimer);
+      holdTimer = window.setTimeout(ask, 2600); // then open back up if we ended up above it
+      if (el.hasAttribute("data-collapsed")) return;
+      const top = el.getBoundingClientRect().top;
+      const root = document.documentElement;
+      root.style.overflowAnchor = "none";
+      el.setAttribute("data-collapsed", "");
+      // jumping from inside it: start from the folded laptop, not from a spot that no longer exists
+      if (top < 0) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+      requestAnimationFrame(() => { root.style.overflowAnchor = ""; });
+      ask();
+    };
+    // Turning the phone (or resizing the window) changes svh, so the track, 1100svh long, changes length
+    // under a scroll position that stays put: you'd be thrown forward or back, possibly past the end (it
+    // folds) and near the bottom (the ending). Put you back at the same point in it. Only when its length
+    // changed: the address bar alone doesn't change svh, and scrolling during a flick would stop the flick.
+    const resized = () => {
+      if (lastP >= 0 && !el.hasAttribute("data-collapsed") && el.offsetHeight !== lastLen) {
+        const root = document.documentElement;
+        root.style.overflowAnchor = "none";
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo({ top: top + lastP * Math.max(1, el.offsetHeight - window.innerHeight), behavior: "instant" });
+        requestAnimationFrame(() => { root.style.overflowAnchor = ""; });
+      }
+      lastLen = el.offsetHeight;
+      ask();
+    };
+    window.addEventListener("nt-fold", fold);
     window.addEventListener("scroll", ask, { passive: true });
-    window.addEventListener("resize", ask);
+    window.addEventListener("resize", resized);
     ask();
     return () => {
+      window.removeEventListener("nt-fold", fold);
+      window.clearTimeout(holdTimer);
       window.removeEventListener("scroll", ask);
-      window.removeEventListener("resize", ask);
+      window.removeEventListener("resize", resized);
       cancelAnimationFrame(raf);
       cb.current.onInside(false);
     };
@@ -412,7 +473,7 @@ export default function EditSuite({ onNodes, onInside }: { onNodes: (n: number) 
                 {page === "media" ? "source · C0447" : page === "edit" ? "timeline · garner" : page === "color" ? `node ${String(Math.max(1, n)).padStart(2, "0")} · ${NODES[Math.max(0, n - 1)]}` : "deliver · garner_reel"}
                 <i><span ref={tcRef}>01:00:06:00</span></i>
               </header>
-              <AppViewer nodes={viewerNodes} live={live} scopeRef={scopeRef} />
+              <AppViewer nodes={viewerNodes} live={live} scope={page === "color"} scopeRef={scopeRef} />
               <div className={styles.transport} aria-hidden="true">
                 <i>⏮</i><i>◀︎◀︎</i><i data-cur="play">▶</i><i>▶︎▶︎</i><i>⏭</i>
                 <span className={styles.lutTag}>{viewerNodes === 0 ? "s-log3 · no lut" : viewerNodes >= 8 ? "graded" : `grading · ${viewerNodes}/7`}</span>

@@ -151,7 +151,6 @@ void main() {
 type Pt = { x: number; y: number; r: number; rTo: number; s: number; sTo: number; born: number };
 
 const smooth = (cur: number, to: number, rate: number, dt: number) => cur + (to - cur) * (1 - Math.exp(-rate * dt));
-const two = (n: number) => String(Math.max(0, Math.floor(n))).padStart(2, "0");
 
 export type Readout = { n: number; of: number; id: string; place: string; from: string; to: string; tc: string; graded: number };
 
@@ -163,10 +162,14 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
   const [shape, setShape] = useState<Shape | null>(null);
   const [live, setLive] = useState(false);
   const [fallback, setFallback] = useState(false);
-  const [readout, setReadout] = useState<Readout>({
+  // bumped when the browser gives a lost WebGL context back (iOS drops them on app switches), to rebuild
+  const [gen, setGen] = useState(0);
+  // The children get a readout of the clip. Nothing on the page shows it any more, so it isn't updated
+  // live (that was a re-render eight times a second for nothing).
+  const readout: Readout = {
     n: 1, of: CLIPS.length, id: CLIPS[0].id, place: CLIPS[0].place, from: CLIPS[0].from, to: CLIPS[0].to,
     tc: "00:00:04:12", graded: 0,
-  });
+  };
 
   useEffect(() => {
     const pick = () => setShape(window.innerHeight > window.innerWidth ? "portrait" : "landscape");
@@ -183,13 +186,17 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
     const vids = [vidA.current!, vidB.current!];
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) { queueMicrotask(() => setFallback(true)); return; }
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false, premultipliedAlpha: false });
-    if (!gl || reduce) { setFallback(true); return; }
+    if (!gl) { queueMicrotask(() => setFallback(true)); return; }
+    if (gl.isContextLost()) return; // still lost: webglcontextrestored will bump gen and run this again
     setFallback(false);
     setLive(false);
 
     const fine = window.matchMedia("(pointer: fine)").matches;
-    const dpr = Math.min(window.devicePixelRatio || 1, fine ? 2 : 1.5);
+    // the clips are 1280 wide, so past 1.5x the shader is only drawing more noise, not more picture
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    let alive = true; // this run is still the current one (a rotation or a lost context starts another)
 
     // ---- GL
     const compile = (type: number, src: string) => {
@@ -235,11 +242,16 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
 
     // ---- clips: a still per clip, two players that take turns
     const stills = CLIPS.map((c) => { const im = new Image(); im.src = c[shape].still; return im; });
-    stills[0].onload = () => { if (!haveFrame) upload(stills[0]); };
+    stills[0].onload = () => { if (alive && !haveFrame) upload(stills[0]); };
 
     let ci = 0;    // the clip on screen
     let slot = 0;  // the player holding it
+    // playing: playback has been allowed once, so we want it running whenever the hero is on screen.
+    // running(): it actually is, right now. The fade and the cuts go by running(), never by the wish, or a
+    // clip the browser refused to start (Low Power Mode, nothing buffered yet) sits on frame 0 at fade 0:
+    // a black hero that no tap could fix.
     let playing = false;
+    const running = () => { const v = vids[slot]; return !v.paused && !v.ended; };
     const dirty = [false, false];
     const lastT = [-1, -1];
 
@@ -253,14 +265,14 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
     load(vids[0], CLIPS[0]);
     if (CLIPS.length > 1) load(vids[1], CLIPS[1]);
 
-    const tryPlay = () => vids[slot].play().then(() => { playing = true; }).catch(() => { /* Low Power Mode: stay on the still */ });
+    const tryPlay = () => { if (alive) vids[slot].play().then(() => { playing = true; }).catch(() => { /* Low Power Mode: stay on the still */ }); };
     vids[0].addEventListener("canplay", tryPlay, { once: true });
 
     type RVFC = (cb: () => void) => number;
     vids.forEach((v, i) => {
       const rvfc = (v as unknown as { requestVideoFrameCallback?: RVFC }).requestVideoFrameCallback?.bind(v);
       if (!rvfc) { dirty[i] = true; return; }
-      const tick = () => { dirty[i] = true; rvfc(tick); };
+      const tick = () => { if (!alive) return; dirty[i] = true; rvfc(tick); };
       rvfc(tick);
     });
     const hasRVFC = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
@@ -276,13 +288,15 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       const v = vids[slot];
       v.currentTime = 0;
       lastT[slot] = -1;
-      v.play().then(() => { playing = true; }).catch(() => {});
+      // refused (Low Power Mode wants a tap per player): show this clip's still, and the next tap plays it
+      v.play().then(() => { playing = true; }).catch(() => { if (alive) upload(stills[ci]); });
       if (v.readyState < 2) upload(stills[ci]);
       old.pause();
       load(old, CLIPS[(ci + 1) % CLIPS.length]);
       switching = false;
     };
-    vids.forEach((v) => v.addEventListener("ended", () => { if (v === vids[slot]) advance(); }));
+    const onEnded = (e: Event) => { if (e.target === vids[slot]) advance(); };
+    vids.forEach((v) => v.addEventListener("ended", onEnded));
 
     // ---- size
     let W = 1, H = 1;
@@ -315,7 +329,11 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       blooms.push({ x, y, r: 0, rTo: Math.max(W, H) * (fine ? 0.42 : 0.55), s: 1, sTo: 1, born: now() });
       blooms = blooms.slice(-4);
       lastInput = now();
-      if (!playing) tryPlay();
+      if (!running()) tryPlay();
+      // Low Power Mode lets a player start only from a tap, and the next clip plays from the loop, not a
+      // tap. So use this tap to unlock the waiting player too: start it and stop it straight away.
+      const other = vids[1 - slot];
+      if (other.paused && other.readyState >= 1) other.play().then(() => { if (other !== vids[slot]) other.pause(); }).catch(() => {});
     };
 
     const onMove = (e: PointerEvent) => {
@@ -346,8 +364,8 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
 
     // The hero is pinned under the page, so "on screen" means "not yet covered": decided by scroll,
     // not by an IntersectionObserver (a pinned element always intersects).
-    let onScreen = true;
     const coverAt = () => window.innerHeight * 1.6;
+    let onScreen = window.scrollY < coverAt(); // a rotation deep in the page doesn't start it decoding
     const onScroll = () => {
       const vis = window.scrollY < coverAt();
       if (vis === onScreen) return;
@@ -355,12 +373,32 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       const v = vids[slot];
       if (onScreen) { if (playing) v.play().catch(() => {}); } else v.pause();
     };
+    // back from another app or tab, or from the back/forward cache: carry on if it was playing
+    const onBack = () => {
+      if (document.visibilityState === "visible" && onScreen && playing && !running()) vids[slot].play().catch(() => {});
+    };
+    // iOS drops WebGL contexts when it's short of memory or the tab goes to the background. Ask for it back
+    // (preventDefault), show the still meanwhile, and rebuild when it's restored.
+    const onLost = (e: Event) => { e.preventDefault(); alive = false; cancelAnimationFrame(raf); setLive(false); };
+    const onRestored = () => setGen((g) => g + 1);
     window.addEventListener("scroll", onScroll, { passive: true });
-    const io = { disconnect: () => window.removeEventListener("scroll", onScroll) };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("pageshow", onBack);
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
+    const io = {
+      disconnect: () => {
+        window.removeEventListener("scroll", onScroll);
+        document.removeEventListener("visibilitychange", onBack);
+        window.removeEventListener("pageshow", onBack);
+        canvas.removeEventListener("webglcontextlost", onLost);
+        canvas.removeEventListener("webglcontextrestored", onRestored);
+      },
+    };
 
     // ---- loop
     const ptsArr = new Float32Array(MAX_POINTS * 4);
-    let raf = 0, last = now(), lastReadout = 0;
+    let raf = 0, last = now();
     const t0 = now();
 
     const frame = () => {
@@ -405,16 +443,19 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       ptsArr.fill(0);
       pts.forEach((p, i) => ptsArr.set([p.x, p.y, p.r, p.s], i * 4));
 
-      // upload on a fresh decoded frame, or whenever the clock moved (rVFC can stall in a hidden tab)
+      // upload on a fresh decoded frame (the clips are 24 fps, the screen 60 or 120), or, where there's no
+      // frame callback or it has stalled, when the clock has moved on
       const v = vids[slot];
-      if (playing && v.readyState >= 2 && (!hasRVFC || dirty[slot] || v.currentTime !== lastT[slot])) {
+      const run = running();
+      const moved = v.currentTime !== lastT[slot];
+      if (run && v.readyState >= 2 && (hasRVFC ? dirty[slot] || Math.abs(v.currentTime - lastT[slot]) > 0.3 : moved)) {
         dirty[slot] = false;
         lastT[slot] = v.currentTime;
         upload(v);
       }
 
       let fade = 1;
-      if (playing && v.duration) {
+      if (run && v.duration) {
         const vt = v.currentTime, d = v.duration;
         fade = Math.max(0, Math.min(1, vt / FADE, (d - vt) / FADE));
         if (d - vt < 0.05) advance();
@@ -425,22 +466,15 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       gl.uniform1f(uGlobal, global);
       gl.uniform1f(uFade, fade);
       if (haveFrame) gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-      if (t - lastReadout > 0.12) {
-        lastReadout = t;
-        const srcT = clip.srcIn + (playing ? v.currentTime * clip.speed : 0);
-        const area = pts.reduce((a, p) => a + Math.PI * p.r * p.r * p.s, 0) / (W * H);
-        setReadout({
-          n: ci + 1, of: CLIPS.length, id: clip.id, place: clip.place, from: clip.from, to: clip.to,
-          tc: `00:00:${two(srcT % 60)}:${two((srcT % 1) * clip.fps)}`,
-          graded: Math.round(Math.min(1, Math.max(global, area * 0.8)) * 100),
-        });
-      }
     };
     raf = requestAnimationFrame(frame);
 
     return () => {
+      alive = false;
       cancelAnimationFrame(raf);
+      stills.forEach((im) => { im.onload = null; });
+      vids[0].removeEventListener("canplay", tryPlay);
+      vids.forEach((v) => v.removeEventListener("ended", onEnded));
       ro.disconnect();
       io.disconnect();
       canvas.removeEventListener("pointermove", onMove);
@@ -454,7 +488,7 @@ export default function TouchHero({ children }: { children?: (r: Readout) => Rea
       gl.deleteBuffer(buf);
       gl.deleteProgram(prog);
     };
-  }, [shape]);
+  }, [shape, gen]);
 
   const first = shape ? CLIPS[0][shape] : null;
 

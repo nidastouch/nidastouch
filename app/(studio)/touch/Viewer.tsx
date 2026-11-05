@@ -10,15 +10,27 @@ import { detent, recStop } from "./sound";
 export default function Viewer({ p, onClose }: { p: Piece; onClose: () => void }) {
   const [graded, setGraded] = useState(true);
   const stopRef = useRef<HTMLButtonElement>(null);
+  const vidRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const root = document.documentElement;
     const prev = root.style.overflow;
     root.style.overflow = "hidden";
     stopRef.current?.focus();
+    // autoPlay alone does nothing in Low Power Mode; this runs inside the tap that opened the viewer
+    vidRef.current?.play().catch(() => {});
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { recStop(); onClose(); } };
+    // overflow: hidden alone doesn't stop a finger on a phone from scrolling the page underneath
+    const block = (e: Event) => e.preventDefault();
     window.addEventListener("keydown", key);
-    return () => { root.style.overflow = prev; window.removeEventListener("keydown", key); };
+    window.addEventListener("touchmove", block, { passive: false });
+    window.addEventListener("wheel", block, { passive: false });
+    return () => {
+      root.style.overflow = prev;
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("touchmove", block);
+      window.removeEventListener("wheel", block);
+    };
   }, [onClose]);
 
   return (
@@ -40,10 +52,10 @@ export default function Viewer({ p, onClose }: { p: Piece; onClose: () => void }
         <button
           type="button"
           className={`${styles.viewerPic} ${graded ? styles.graded : ""}`}
-          onClick={(e) => { e.stopPropagation(); detent(); setGraded((g) => !g); }}
+          onClick={(e) => { e.stopPropagation(); detent(); setGraded((g) => !g); vidRef.current?.play().catch(() => {}); }}
           aria-label={graded ? "Graded. Tap for the flat version." : "Flat. Tap to grade it."}
         >
-          <video src={p.src} poster={p.poster} autoPlay muted playsInline loop style={{ aspectRatio: `${p.w} / ${p.h}` }} />
+          <video ref={vidRef} src={p.src} poster={p.poster} autoPlay muted playsInline loop style={{ aspectRatio: `${p.w} / ${p.h}` }} />
           <span className={styles.chip} aria-hidden="true">{graded ? "graded" : "flat"}</span>
         </button>
       </div>

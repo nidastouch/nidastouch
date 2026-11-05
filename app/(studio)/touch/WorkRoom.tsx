@@ -12,9 +12,9 @@ import { detent, press } from "./sound";
   (so does the camera's REC, which reads data-piece on the feature).
 */
 
-type Props = { work: Piece[]; bypass: boolean; onOpen: (p: Piece) => void };
+type Props = { work: Piece[]; bypass: boolean; onOpen: (p: Piece) => void; paused?: boolean };
 
-export default function WorkRoom({ work, bypass, onOpen }: Props) {
+export default function WorkRoom({ work, bypass, onOpen, paused = false }: Props) {
   const [at, setAt] = useState(0);
   const [graded, setGraded] = useState<Record<string, boolean>>({});
   const vid = useRef<HTMLVideoElement>(null);
@@ -34,11 +34,23 @@ export default function WorkRoom({ work, bypass, onOpen }: Props) {
     io.observe(room.current!);
     return () => io.disconnect();
   }, []);
-  // a new piece: play it if we're in view
+  // a new piece, or the viewer closing over it: play it if we're in view; stop it under the viewer
   useEffect(() => {
     const v = vid.current;
-    if (v && near.current) v.play().catch(() => {});
-  }, [at]);
+    if (!v) return;
+    if (paused) v.pause();
+    else if (near.current) v.play().catch(() => {});
+  }, [at, paused]);
+  // back from another app or tab: carry on
+  useEffect(() => {
+    const back = () => {
+      const v = vid.current;
+      if (v && document.visibilityState === "visible" && near.current && !paused && v.paused) v.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("pageshow", back);
+    return () => { document.removeEventListener("visibilitychange", back); window.removeEventListener("pageshow", back); };
+  }, [paused]);
 
   return (
     <div ref={room} className={styles.room}>
@@ -47,11 +59,15 @@ export default function WorkRoom({ work, bypass, onOpen }: Props) {
         <button
           type="button"
           className={`${styles.featurePic} ${on ? styles.graded : ""}`}
-          onClick={() => { detent(); setGraded((g) => ({ ...g, [p.id]: !g[p.id] })); }}
+          onClick={() => {
+            detent();
+            setGraded((g) => ({ ...g, [p.id]: !g[p.id] }));
+            vid.current?.play().catch(() => {}); // Low Power Mode only plays from a tap: this is one
+          }}
           aria-pressed={on}
           aria-label={`${p.title}: ${on ? "graded, tap for the flat version" : "flat, tap to grade it"}`}
         >
-          <video key={p.id} ref={vid} src={p.src} poster={p.poster} muted playsInline loop preload="metadata" style={{ aspectRatio: `${p.w} / ${p.h}` }} aria-hidden="true" />
+          <video ref={vid} src={p.src} poster={p.poster} muted playsInline loop preload="metadata" style={{ aspectRatio: `${p.w} / ${p.h}` }} aria-hidden="true" />
           <span className={styles.chip} aria-hidden="true">{bypass ? "bypass" : on ? "graded" : "flat"}</span>
         </button>
       </div>
